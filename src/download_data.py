@@ -1,26 +1,83 @@
 import yfinance as yf
 import pandas as pd
+import os
 
-pd.set_option('display.max_columns', None)
-pd.set_option('display.max_colwidth', None)
-pd.set_option('display.width', None)
+# FTSE 100 companies selected to provide balanced sector representation
 
-# Example FTSE 100 stocks
 tickers = [
+
+    # Banking & Financial Services
     "HSBA.L",   # HSBC
-    "BP.L",     # BP
+    "BARC.L",   # Barclays
+    "LLOY.L",   # Lloyds Banking Group
+    "NWG.L",    # NatWest Group
+    "STAN.L",   # Standard Chartered
+
+    # Energy & Mining
     "SHEL.L",   # Shell
+    "BP.L",     # BP
+    "RIO.L",    # Rio Tinto
+    "GLEN.L",   # Glencore
+    "AAL.L",    # Anglo American
+
+    # Healthcare & Pharmaceuticals
     "AZN.L",    # AstraZeneca
-    "ULVR.L"    # Unilever
+    "GSK.L",    # GSK
+    "HLN.L",    # Haleon
+    "SN.L",     # Smith & Nephew
+    "CTEC.L",   # ConvaTec
+
+    # Consumer Goods
+    "ULVR.L",   # Unilever
+    "DGE.L",    # Diageo
+    "RKT.L",    # Reckitt
+    "CCH.L",    # Coca-Cola HBC
+    "IMB.L",    # Imperial Brands
+
+    # Retail
+    "TSCO.L",   # Tesco
+    "SBRY.L",   # Sainsbury's
+    "MKS.L",    # Marks & Spencer
+    "BME.L",    # B&M European Value Retail
+    "JD.L",     # JD Sports Fashion
+
+    # Insurance
+    "AV.L",     # Aviva
+    "LGEN.L",   # Legal & General
+    "ADM.L",    # Admiral Group
+    "PRU.L",    # Prudential
+    "BEZ.L",    # Beazley
+
+    # Utilities
+    "NG.L",     # National Grid
+    "SSE.L",    # SSE
+    "UU.L",     # United Utilities
+    "SVT.L",    # Severn Trent
+    "CNA.L",    # Centrica
+
+    # Industrials & Technology
+    "RR.L",     # Rolls-Royce
+    "SMIN.L",   # Smiths Group
+    "WEIR.L",   # Weir Group
+    "AUTO.L",   # Auto Trader
+    "REL.L"     # RELX
 ]
 
-# Download 5 years of daily data
+print(f"Downloading data for {len(tickers)} companies...")
+
+# Download historical data
 data = yf.download(
-    tickers,
+    tickers=tickers,
     start="2021-01-01",
     end="2026-01-01",
     group_by="ticker",
-    auto_adjust=True
+    auto_adjust=False,
+    progress=True
 )
 
-data.to_csv("data/raw/ftse100_sample.csv")
+# Save raw dataset
+data.to_csv("data/raw/ftse100_40_companies.csv")
+
+print("\nDownload complete!")
+print(f"Dataset shape: {data.shape}")
+print("Saved to: data/raw/ftse100_40_companies.csv")
