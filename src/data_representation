@@ -1,0 +1,425 @@
+import os
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
+
+# ============================================================
+# File paths
+# ============================================================
+
+RAW_DATA_PATH = "data/raw/ftse100_40_companies.csv"
+PROCESSED_DATA_DIR = "data/processed"
+FIGURES_DIR = "results/figures"
+
+os.makedirs(PROCESSED_DATA_DIR, exist_ok=True)
+os.makedirs(FIGURES_DIR, exist_ok=True)
+
+
+# ============================================================
+# Load dataset
+# ============================================================
+
+data = pd.read_csv(
+    RAW_DATA_PATH,
+    header=[0, 1],
+    index_col=0,
+    parse_dates=True
+)
+
+# Extract adjusted closing prices
+prices = data.xs("Adj Close", axis=1, level=1)
+
+# Ensure dates are ordered correctly
+prices = prices.sort_index()
+
+print("=" * 60)
+print("REPRESENTATION OF STOCK PRICE TIME SERIES")
+print("=" * 60)
+
+print(f"Dataset shape: {prices.shape}")
+print(f"Date range: {prices.index.min()} to {prices.index.max()}")
+print(f"Number of companies: {prices.shape[1]}")
+
+
+# ============================================================
+# Select representative companies for clearer plots
+# ============================================================
+
+sample_companies = [
+    "LLOY.L",   # Banking
+    "SHEL.L",   # Energy
+    "AZN.L",    # Healthcare
+    "TSCO.L",   # Retail
+    "NG.L",     # Utilities
+    "RR.L"      # Industrials
+]
+
+# Keep only companies that are present in the dataset
+sample_companies = [
+    company
+    for company in sample_companies
+    if company in prices.columns
+]
+
+
+# ============================================================
+# Representation 1: Raw adjusted closing prices
+# ============================================================
+
+print("\nRepresentation 1: Raw adjusted closing prices")
+
+plt.figure(figsize=(14, 7))
+
+for company in sample_companies:
+    plt.plot(
+        prices.index,
+        prices[company],
+        label=company
+    )
+
+plt.title("Raw Adjusted Closing Prices")
+plt.xlabel("Date")
+plt.ylabel("Adjusted Closing Price (GBp)")
+plt.legend()
+plt.tight_layout()
+
+plt.savefig(
+    f"{FIGURES_DIR}/raw_adjusted_prices.png",
+    dpi=300,
+    bbox_inches="tight"
+)
+
+plt.show()
+
+
+# ============================================================
+# Representation 2: Starting-value normalised prices
+# ============================================================
+
+print("\nRepresentation 2: Starting-value normalised prices")
+
+# Use the first non-missing price for each company
+first_valid_prices = prices.apply(
+    lambda column: column.dropna().iloc[0]
+)
+
+normalised_prices = prices.divide(
+    first_valid_prices,
+    axis=1
+)
+
+plt.figure(figsize=(14, 7))
+
+for company in sample_companies:
+    plt.plot(
+        normalised_prices.index,
+        normalised_prices[company],
+        label=company
+    )
+
+plt.title("Stock Prices Normalised to Initial Value")
+plt.xlabel("Date")
+plt.ylabel("Normalised Price")
+plt.legend()
+plt.tight_layout()
+
+plt.savefig(
+    f"{FIGURES_DIR}/normalised_prices.png",
+    dpi=300,
+    bbox_inches="tight"
+)
+
+plt.show()
+
+
+# ============================================================
+# Representation 3: Daily percentage returns
+# ============================================================
+
+print("\nRepresentation 3: Daily percentage returns")
+
+daily_returns = prices.pct_change(
+    fill_method=None
+).dropna(how="all")
+
+plt.figure(figsize=(14, 7))
+
+for company in sample_companies:
+    plt.plot(
+        daily_returns.index,
+        daily_returns[company],
+        label=company,
+        alpha=0.7
+    )
+
+plt.title("Daily Percentage Returns")
+plt.xlabel("Date")
+plt.ylabel("Daily Return")
+plt.legend()
+plt.tight_layout()
+
+plt.savefig(
+    f"{FIGURES_DIR}/daily_returns.png",
+    dpi=300,
+    bbox_inches="tight"
+)
+
+plt.show()
+
+
+# ============================================================
+# Representation 4: Log returns
+# ============================================================
+
+print("\nRepresentation 4: Log returns")
+
+log_returns = np.log(
+    prices / prices.shift(1)
+).dropna(how="all")
+
+plt.figure(figsize=(14, 7))
+
+for company in sample_companies:
+    plt.plot(
+        log_returns.index,
+        log_returns[company],
+        label=company,
+        alpha=0.7
+    )
+
+plt.title("Daily Log Returns")
+plt.xlabel("Date")
+plt.ylabel("Log Return")
+plt.legend()
+plt.tight_layout()
+
+plt.savefig(
+    f"{FIGURES_DIR}/log_returns.png",
+    dpi=300,
+    bbox_inches="tight"
+)
+
+plt.show()
+
+
+# ============================================================
+# Compare raw and normalised prices directly
+# ============================================================
+
+comparison_companies = [
+    company
+    for company in ["AZN.L", "LLOY.L"]
+    if company in prices.columns
+]
+
+if len(comparison_companies) == 2:
+    company_a, company_b = comparison_companies
+
+    plt.figure(figsize=(12, 6))
+
+    plt.plot(
+        prices.index,
+        prices[company_a],
+        label=company_a
+    )
+
+    plt.plot(
+        prices.index,
+        prices[company_b],
+        label=company_b
+    )
+
+    plt.title(
+        f"Raw Price Comparison: {company_a} and {company_b}"
+    )
+    plt.xlabel("Date")
+    plt.ylabel("Adjusted Closing Price (GBp)")
+    plt.legend()
+    plt.tight_layout()
+
+    plt.savefig(
+        f"{FIGURES_DIR}/raw_price_comparison.png",
+        dpi=300,
+        bbox_inches="tight"
+    )
+
+    plt.show()
+
+    plt.figure(figsize=(12, 6))
+
+    plt.plot(
+        normalised_prices.index,
+        normalised_prices[company_a],
+        label=company_a
+    )
+
+    plt.plot(
+        normalised_prices.index,
+        normalised_prices[company_b],
+        label=company_b
+    )
+
+    plt.title(
+        f"Normalised Price Comparison: {company_a} and {company_b}"
+    )
+    plt.xlabel("Date")
+    plt.ylabel("Growth Relative to Initial Price")
+    plt.legend()
+    plt.tight_layout()
+
+    plt.savefig(
+        f"{FIGURES_DIR}/normalised_price_comparison.png",
+        dpi=300,
+        bbox_inches="tight"
+    )
+
+    plt.show()
+
+
+# ============================================================
+# Statistical comparison of daily and log returns
+# ============================================================
+
+daily_returns_stacked = daily_returns.stack().dropna()
+log_returns_stacked = log_returns.stack().dropna()
+
+return_comparison = pd.DataFrame({
+    "Daily Returns": [
+        daily_returns_stacked.mean(),
+        daily_returns_stacked.std(),
+        daily_returns_stacked.min(),
+        daily_returns_stacked.max(),
+        daily_returns_stacked.skew(),
+        daily_returns_stacked.kurtosis()
+    ],
+    "Log Returns": [
+        log_returns_stacked.mean(),
+        log_returns_stacked.std(),
+        log_returns_stacked.min(),
+        log_returns_stacked.max(),
+        log_returns_stacked.skew(),
+        log_returns_stacked.kurtosis()
+    ]
+}, index=[
+    "Mean",
+    "Standard Deviation",
+    "Minimum",
+    "Maximum",
+    "Skewness",
+    "Kurtosis"
+])
+
+print("\n" + "=" * 60)
+print("DAILY RETURNS VS LOG RETURNS")
+print("=" * 60)
+
+print(return_comparison)
+
+
+# ============================================================
+# Distribution of daily returns
+# ============================================================
+
+plt.figure(figsize=(10, 6))
+
+plt.hist(
+    daily_returns_stacked,
+    bins=100
+)
+
+plt.title("Distribution of Daily Percentage Returns")
+plt.xlabel("Daily Return")
+plt.ylabel("Frequency")
+plt.tight_layout()
+
+plt.savefig(
+    f"{FIGURES_DIR}/daily_returns_distribution.png",
+    dpi=300,
+    bbox_inches="tight"
+)
+
+plt.show()
+
+
+# ============================================================
+# Distribution of log returns
+# ============================================================
+
+plt.figure(figsize=(10, 6))
+
+plt.hist(
+    log_returns_stacked,
+    bins=100
+)
+
+plt.title("Distribution of Daily Log Returns")
+plt.xlabel("Log Return")
+plt.ylabel("Frequency")
+plt.tight_layout()
+
+plt.savefig(
+    f"{FIGURES_DIR}/log_returns_distribution.png",
+    dpi=300,
+    bbox_inches="tight"
+)
+
+plt.show()
+
+
+# ============================================================
+# Measure similarity between daily and log returns
+# ============================================================
+
+common_values = pd.concat(
+    [
+        daily_returns.stack().rename("Daily Returns"),
+        log_returns.stack().rename("Log Returns")
+    ],
+    axis=1
+).dropna()
+
+return_correlation = common_values[
+    "Daily Returns"
+].corr(
+    common_values["Log Returns"]
+)
+
+print("\nCorrelation between daily and log returns:")
+print(f"{return_correlation:.6f}")
+
+
+# ============================================================
+# Save processed representations
+# ============================================================
+
+prices.to_csv(
+    f"{PROCESSED_DATA_DIR}/raw_adjusted_prices.csv"
+)
+
+normalised_prices.to_csv(
+    f"{PROCESSED_DATA_DIR}/normalised_prices.csv"
+)
+
+daily_returns.to_csv(
+    f"{PROCESSED_DATA_DIR}/daily_returns.csv"
+)
+
+log_returns.to_csv(
+    f"{PROCESSED_DATA_DIR}/log_returns.csv"
+)
+
+return_comparison.to_csv(
+    f"{PROCESSED_DATA_DIR}/return_representation_comparison.csv"
+)
+
+
+# ============================================================
+# Final observations
+# ============================================================
+
+print("\n" + "=" * 60)
+
+print("Processed datasets saved to:", PROCESSED_DATA_DIR)
+print("Figures saved to:", FIGURES_DIR)
