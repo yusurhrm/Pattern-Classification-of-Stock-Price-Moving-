@@ -23,7 +23,7 @@ tickers = [
     # Healthcare & Pharmaceuticals
     "AZN.L",    # AstraZeneca
     "GSK.L",    # GSK
-    "HLN.L",    # Haleon
+    "HIK.L",    # was Haleon changed to Hikma Pharmaceuticals
     "SN.L",     # Smith & Nephew
     "CTEC.L",   # ConvaTec
 
