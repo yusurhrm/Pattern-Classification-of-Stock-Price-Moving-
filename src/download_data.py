@@ -1,83 +1,175 @@
-import yfinance as yf
+from pathlib import Path
+
 import pandas as pd
-import os
+import yfinance as yf
 
-# FTSE 100 companies selected to provide balanced sector representation
 
-tickers = [
+# --------------------------------------------------
+# File paths
+# --------------------------------------------------
 
-    # Banking & Financial Services
-    "HSBA.L",   # HSBC
-    "BARC.L",   # Barclays
-    "LLOY.L",   # Lloyds Banking Group
-    "NWG.L",    # NatWest Group
-    "STAN.L",   # Standard Chartered
+# Project root:
+# Pattern-Classification-of-Stock-Price-Moving-/
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-    # Energy & Mining
-    "SHEL.L",   # Shell
-    "BP.L",     # BP
-    "RIO.L",    # Rio Tinto
-    "GLEN.L",   # Glencore
-    "AAL.L",    # Anglo American
+MAPPING_FILE = PROJECT_ROOT / "data" / "ftse100_ticker_mapping.xlsx"
+OUTPUT_DIR = PROJECT_ROOT / "data" / "raw"
+OUTPUT_FILE = OUTPUT_DIR / "ftse100_100_companies.csv"
 
-    # Healthcare & Pharmaceuticals
-    "AZN.L",    # AstraZeneca
-    "GSK.L",    # GSK
-    "HIK.L",    # was Haleon changed to Hikma Pharmaceuticals
-    "SN.L",     # Smith & Nephew
-    "CTEC.L",   # ConvaTec
 
-    # Consumer Goods
-    "ULVR.L",   # Unilever
-    "DGE.L",    # Diageo
-    "RKT.L",    # Reckitt
-    "CCH.L",    # Coca-Cola HBC
-    "IMB.L",    # Imperial Brands
+# --------------------------------------------------
+# Download settings
+# --------------------------------------------------
 
-    # Retail
-    "TSCO.L",   # Tesco
-    "SBRY.L",   # Sainsbury's
-    "MKS.L",    # Marks & Spencer
-    "BME.L",    # B&M European Value Retail
-    "JD.L",     # JD Sports Fashion
+START_DATE = "2021-01-01"
 
-    # Insurance
-    "AV.L",     # Aviva
-    "LGEN.L",   # Legal & General
-    "ADM.L",    # Admiral Group
-    "PRU.L",    # Prudential
-    "BEZ.L",    # Beazley
+# yfinance treats the end date as exclusive.
+# This therefore downloads through 31 December 2025.
+END_DATE = "2026-01-01"
 
-    # Utilities
-    "NG.L",     # National Grid
-    "SSE.L",    # SSE
-    "UU.L",     # United Utilities
-    "SVT.L",    # Severn Trent
-    "CNA.L",    # Centrica
 
-    # Industrials & Technology
-    "RR.L",     # Rolls-Royce
-    "SMIN.L",   # Smiths Group
-    "WEIR.L",   # Weir Group
-    "AUTO.L",   # Auto Trader
-    "REL.L"     # RELX
-]
+def load_tickers() -> tuple[pd.DataFrame, list[str]]:
+    """Load and validate company names and Yahoo Finance tickers."""
 
-print(f"Downloading data for {len(tickers)} companies...")
+    mapping = pd.read_excel(MAPPING_FILE)
 
-# Download historical data
-data = yf.download(
-    tickers=tickers,
-    start="2021-01-01",
-    end="2026-01-01",
-    group_by="ticker",
-    auto_adjust=False,
-    progress=True
-)
+    required_columns = {"Company", "Ticker"}
+    missing_columns = required_columns - set(mapping.columns)
 
-# Save raw dataset
-data.to_csv("data/raw/ftse100_40_companies.csv")
+    if missing_columns:
+        raise ValueError(
+            f"Mapping file is missing these columns: {sorted(missing_columns)}"
+        )
 
-print("\nDownload complete!")
-print(f"Dataset shape: {data.shape}")
-print("Saved to: data/raw/ftse100_40_companies.csv")
+    # Remove accidental spaces from names and tickers.
+    mapping["Company"] = mapping["Company"].astype("string").str.strip()
+    mapping["Ticker"] = mapping["Ticker"].astype("string").str.strip().str.upper()
+
+    # Remove completely empty rows.
+    mapping = mapping.dropna(subset=["Company"], how="all")
+
+    # Check for missing tickers.
+    missing_tickers = mapping[
+        mapping["Ticker"].isna() | mapping["Ticker"].eq("")
+    ]
+
+    if not missing_tickers.empty:
+        companies = missing_tickers["Company"].tolist()
+        raise ValueError(
+            "The following companies have no ticker:\n"
+            + "\n".join(f"- {company}" for company in companies)
+        )
+
+    # Check for duplicate tickers.
+    duplicate_tickers = mapping[
+        mapping["Ticker"].duplicated(keep=False)
+    ].sort_values("Ticker")
+
+    if not duplicate_tickers.empty:
+        raise ValueError(
+            "Duplicate tickers found:\n"
+            + duplicate_tickers[["Company", "Ticker"]].to_string(index=False)
+        )
+
+    tickers = mapping["Ticker"].tolist()
+
+    print(f"Loaded {len(mapping)} companies.")
+    print(f"Loaded {len(tickers)} unique tickers.")
+
+    if len(tickers) != 100:
+        print(
+            f"Warning: expected 100 tickers, but the file contains {len(tickers)}."
+        )
+
+    return mapping, tickers
+
+
+def download_prices(tickers: list[str]) -> pd.DataFrame:
+    """Download daily historical prices for all tickers."""
+
+    print(f"\nDownloading data from {START_DATE} to {END_DATE}...")
+
+    data = yf.download(
+        tickers=tickers,
+        start=START_DATE,
+        end=END_DATE,
+        group_by="ticker",
+        auto_adjust=False,
+        actions=False,
+        progress=True,
+        threads=True,
+    )
+
+    if data.empty:
+        raise RuntimeError("Yahoo Finance returned no data.")
+
+    return data
+
+
+def identify_failed_tickers(
+    data: pd.DataFrame,
+    tickers: list[str],
+) -> list[str]:
+    """Identify tickers with no downloaded closing-price data."""
+
+    failed = []
+
+    for ticker in tickers:
+        try:
+            if isinstance(data.columns, pd.MultiIndex):
+                ticker_data = data[ticker]
+
+                price_column = (
+                    "Adj Close"
+                    if "Adj Close" in ticker_data.columns
+                    else "Close"
+                )
+
+                if ticker_data[price_column].dropna().empty:
+                    failed.append(ticker)
+
+            else:
+                # This normally only applies when one ticker is downloaded.
+                price_column = (
+                    "Adj Close"
+                    if "Adj Close" in data.columns
+                    else "Close"
+                )
+
+                if data[price_column].dropna().empty:
+                    failed.append(ticker)
+
+        except (KeyError, TypeError):
+            failed.append(ticker)
+
+    return failed
+
+
+def main() -> None:
+    """Run the complete download process."""
+
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    mapping, tickers = load_tickers()
+    data = download_prices(tickers)
+
+    failed_tickers = identify_failed_tickers(data, tickers)
+
+    if failed_tickers:
+        print("\nThese tickers returned no usable data:")
+        for ticker in failed_tickers:
+            company = mapping.loc[
+                mapping["Ticker"].eq(ticker), "Company"
+            ].iloc[0]
+            print(f"- {company}: {ticker}")
+    else:
+        print("\nAll tickers returned data.")
+
+    data.to_csv(OUTPUT_FILE)
+
+    print(f"\nDataset shape: {data.shape}")
+    print(f"Data saved to:\n{OUTPUT_FILE}")
+
+
+if __name__ == "__main__":
+    main()
