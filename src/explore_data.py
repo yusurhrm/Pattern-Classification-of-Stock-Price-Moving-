@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 
 # Load the downloaded dataset
 data = pd.read_csv(
-    "data/raw/ftse100_40_companies.csv",
+    "data/raw/ftse100_100_companies.csv",
     header=[0, 1],
     index_col=0,
     parse_dates=True
@@ -67,6 +67,21 @@ print("=" * 50)
 
 print(close_prices.describe())
 
+print("\n" + "=" * 50)
+print("MISSING VALUES PER COMPANY")
+print("=" * 50)
+
+missing_company = close_prices.isna().sum()
+
+missing_company = pd.DataFrame({
+    "Missing Days": missing_company,
+    "Missing %": (missing_company / len(close_prices)) * 100
+})
+
+missing_company = missing_company.sort_values("Missing Days", ascending=False)
+
+print(missing_company)
+
 # ============================================================
 # Plot raw adjusted closing prices
 # ============================================================
@@ -81,7 +96,7 @@ for company in close_prices.columns:
         label=company
     )
 
-plt.title("Adjusted Closing Prices of 40 FTSE Companies")
+plt.title("Adjusted Closing Prices of 100 FTSE Companies")
 plt.xlabel("Date")
 plt.ylabel("Adjusted Closing Price (GBp)")
 plt.tight_layout()
@@ -139,6 +154,7 @@ plt.title("Correlation Matrix of Daily Stock Returns")
 plt.tight_layout()
 plt.show()
 
+
 # ============================================================
 # Return distribution
 # ============================================================
@@ -187,3 +203,24 @@ print("=" * 50)
 
 annualised_volatility = daily_returns.std() * (252 ** 0.5)
 print(annualised_volatility.sort_values())
+
+# ============================================================
+# boxplot of daily returns
+# ============================================================
+
+import seaborn as sns
+
+plt.figure(figsize=(10, 6))
+
+sns.histplot(
+    all_returns,
+    bins=100,
+    kde=True
+)
+
+plt.title("Distribution of Daily Stock Returns")
+plt.xlabel("Daily Return")
+plt.ylabel("Frequency")
+plt.tight_layout()
+plt.xlim(-0.1, 0.1)
+plt.show()

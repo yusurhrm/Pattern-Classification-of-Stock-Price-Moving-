@@ -6,19 +6,23 @@ import pandas as pd
 
 
 # ============================================================
-# File paths
+# Configuration
 # ============================================================
 
-RAW_DATA_PATH = "data/raw/ftse100_40_companies.csv"
+RAW_DATA_PATH = "data/raw/ftse100_100_companies.csv"
 PROCESSED_DATA_DIR = "data/processed"
 FIGURES_DIR = "results/figures"
+
+# Companies with more than this percentage of missing adjusted
+# closing prices will be excluded.
+MISSING_THRESHOLD_PERCENT = 5.0
 
 os.makedirs(PROCESSED_DATA_DIR, exist_ok=True)
 os.makedirs(FIGURES_DIR, exist_ok=True)
 
 
 # ============================================================
-# Load dataset
+# Load raw dataset
 # ============================================================
 
 data = pd.read_csv(
@@ -28,23 +32,155 @@ data = pd.read_csv(
     parse_dates=True
 )
 
-# Extract adjusted closing prices
-prices = data.xs("Adj Close", axis=1, level=1)
+# Extract adjusted closing prices only.
+prices = data.xs(
+    "Adj Close",
+    axis=1,
+    level=1
+)
 
-# Ensure dates are ordered correctly
+# Ensure dates and ticker columns are consistently ordered.
 prices = prices.sort_index()
+prices = prices.sort_index(axis=1)
 
 print("=" * 60)
 print("REPRESENTATION OF STOCK PRICE TIME SERIES")
 print("=" * 60)
 
-print(f"Dataset shape: {prices.shape}")
+print(f"Original adjusted-close shape: {prices.shape}")
 print(f"Date range: {prices.index.min()} to {prices.index.max()}")
-print(f"Number of companies: {prices.shape[1]}")
+print(f"Original number of companies: {prices.shape[1]}")
 
 
 # ============================================================
-# Select representative companies for clearer plots
+# Examine missing values
+# ============================================================
+
+missing_days = prices.isna().sum()
+missing_percentage = prices.isna().mean() * 100
+
+missing_summary = pd.DataFrame({
+    "Missing Days": missing_days,
+    "Missing Percentage": missing_percentage
+}).sort_values(
+    "Missing Percentage",
+    ascending=False
+)
+
+print("\n" + "=" * 60)
+print("MISSING VALUES BEFORE PREPROCESSING")
+print("=" * 60)
+
+print(
+    missing_summary[
+        missing_summary["Missing Days"] > 0
+    ]
+)
+
+
+# ============================================================
+# Exclude companies with excessive missing data
+# ============================================================
+
+excluded_companies = missing_summary[
+    missing_summary["Missing Percentage"]
+    > MISSING_THRESHOLD_PERCENT
+].index.tolist()
+
+print("\n" + "=" * 60)
+print("COMPANIES EXCLUDED")
+print("=" * 60)
+
+if excluded_companies:
+    for company in excluded_companies:
+        print(
+            f"{company}: "
+            f"{missing_summary.loc[company, 'Missing Days']} missing days "
+            f"({missing_summary.loc[company, 'Missing Percentage']:.2f}%)"
+        )
+else:
+    print(
+        "No companies exceeded the missing-data threshold of "
+        f"{MISSING_THRESHOLD_PERCENT:.2f}%."
+    )
+
+prices = prices.drop(
+    columns=excluded_companies
+)
+
+print(
+    f"\nCompanies remaining after exclusion: "
+    f"{prices.shape[1]}"
+)
+
+
+# ============================================================
+# Fill small remaining gaps
+# ============================================================
+
+remaining_missing_before = int(
+    prices.isna().sum().sum()
+)
+
+print("\n" + "=" * 60)
+print("MISSING-VALUE TREATMENT")
+print("=" * 60)
+
+print(
+    "Total missing adjusted-close observations before "
+    f"interpolation: {remaining_missing_before}"
+)
+
+# Time interpolation is appropriate for isolated missing trading
+# days among otherwise complete time series.
+prices = prices.interpolate(
+    method="time",
+    limit_direction="both"
+)
+
+remaining_missing_after = int(
+    prices.isna().sum().sum()
+)
+
+print(
+    "Total missing adjusted-close observations after "
+    f"interpolation: {remaining_missing_after}"
+)
+
+if remaining_missing_after > 0:
+    companies_with_missing = (
+        prices.columns[
+            prices.isna().any()
+        ].tolist()
+    )
+
+    raise ValueError(
+        "Missing values remain after interpolation for: "
+        + ", ".join(companies_with_missing)
+    )
+
+print(f"Final cleaned price shape: {prices.shape}")
+
+
+# ============================================================
+# Save missing-data reports
+# ============================================================
+
+missing_summary.to_csv(
+    f"{PROCESSED_DATA_DIR}/missing_value_summary.csv"
+)
+
+excluded_report = missing_summary.loc[
+    excluded_companies
+].copy()
+
+excluded_report.to_csv(
+    f"{PROCESSED_DATA_DIR}/excluded_companies.csv"
+)
+
+
+# ============================================================
+# Select representative companies for plots
 # ============================================================
 
 sample_companies = [
@@ -56,19 +192,21 @@ sample_companies = [
     "RR.L"      # Industrials
 ]
 
-# Keep only companies that are present in the dataset
 sample_companies = [
     company
     for company in sample_companies
     if company in prices.columns
 ]
 
+print("\nRepresentative companies used in figures:")
+print(sample_companies)
+
 
 # ============================================================
-# Representation 1: Raw adjusted closing prices
+# Representation 1: Adjusted closing prices
 # ============================================================
 
-print("\nRepresentation 1: Raw adjusted closing prices")
+print("\nRepresentation 1: Adjusted closing prices")
 
 plt.figure(figsize=(14, 7))
 
@@ -79,34 +217,54 @@ for company in sample_companies:
         label=company
     )
 
-plt.title("Raw Adjusted Closing Prices")
+plt.title(
+    "Adjusted Closing Prices of Representative "
+    "FTSE 100 Companies"
+)
 plt.xlabel("Date")
-plt.ylabel("Adjusted Closing Price (GBp)")
+plt.ylabel("Adjusted Closing Price")
 plt.legend()
 plt.tight_layout()
 
 plt.savefig(
-    f"{FIGURES_DIR}/raw_adjusted_prices.png",
+    f"{FIGURES_DIR}/adjusted_closing_prices.png",
     dpi=300,
     bbox_inches="tight"
 )
 
 plt.show()
+plt.close()
 
 
 # ============================================================
 # Representation 2: Starting-value normalised prices
 # ============================================================
 
-print("\nRepresentation 2: Starting-value normalised prices")
-
-# Use the first non-missing price for each company
-first_valid_prices = prices.apply(
-    lambda column: column.dropna().iloc[0]
+print(
+    "\nRepresentation 2: Starting-value normalised prices"
 )
 
+first_prices = prices.iloc[0]
+
+if first_prices.isna().any():
+    raise ValueError(
+        "At least one company has a missing initial value."
+    )
+
+if (first_prices == 0).any():
+    zero_price_companies = (
+        first_prices[
+            first_prices == 0
+        ].index.tolist()
+    )
+
+    raise ValueError(
+        "Zero starting prices found for: "
+        + ", ".join(zero_price_companies)
+    )
+
 normalised_prices = prices.divide(
-    first_valid_prices,
+    first_prices,
     axis=1
 )
 
@@ -119,9 +277,17 @@ for company in sample_companies:
         label=company
     )
 
-plt.title("Stock Prices Normalised to Initial Value")
+plt.title(
+    "Stock Prices Normalised to Their Initial Values"
+)
 plt.xlabel("Date")
 plt.ylabel("Normalised Price")
+plt.axhline(
+    y=1,
+    linestyle="--",
+    linewidth=1,
+    alpha=0.6
+)
 plt.legend()
 plt.tight_layout()
 
@@ -132,6 +298,7 @@ plt.savefig(
 )
 
 plt.show()
+plt.close()
 
 
 # ============================================================
@@ -142,7 +309,17 @@ print("\nRepresentation 3: Daily percentage returns")
 
 daily_returns = prices.pct_change(
     fill_method=None
-).dropna(how="all")
+)
+
+# The first row is naturally missing because no previous day exists.
+daily_returns = daily_returns.dropna(
+    how="any"
+)
+
+if daily_returns.isna().any().any():
+    raise ValueError(
+        "Missing values remain in the daily-return dataset."
+    )
 
 plt.figure(figsize=(14, 7))
 
@@ -154,30 +331,55 @@ for company in sample_companies:
         alpha=0.7
     )
 
-plt.title("Daily Percentage Returns")
+plt.title(
+    "Daily Percentage Returns of Representative Companies"
+)
 plt.xlabel("Date")
 plt.ylabel("Daily Return")
 plt.legend()
 plt.tight_layout()
 
 plt.savefig(
-    f"{FIGURES_DIR}/daily_returns.png",
+    f"{FIGURES_DIR}/daily_percentage_returns.png",
     dpi=300,
     bbox_inches="tight"
 )
 
 plt.show()
+plt.close()
 
 
 # ============================================================
 # Representation 4: Log returns
 # ============================================================
 
-print("\nRepresentation 4: Log returns")
+print("\nRepresentation 4: Daily log returns")
+
+if (prices <= 0).any().any():
+    non_positive_companies = (
+        prices.columns[
+            (prices <= 0).any()
+        ].tolist()
+    )
+
+    raise ValueError(
+        "Log returns cannot be calculated because non-positive "
+        "prices were found for: "
+        + ", ".join(non_positive_companies)
+    )
 
 log_returns = np.log(
     prices / prices.shift(1)
-).dropna(how="all")
+)
+
+log_returns = log_returns.dropna(
+    how="any"
+)
+
+if log_returns.isna().any().any():
+    raise ValueError(
+        "Missing values remain in the log-return dataset."
+    )
 
 plt.figure(figsize=(14, 7))
 
@@ -189,19 +391,22 @@ for company in sample_companies:
         alpha=0.7
     )
 
-plt.title("Daily Log Returns")
+plt.title(
+    "Daily Log Returns of Representative Companies"
+)
 plt.xlabel("Date")
 plt.ylabel("Log Return")
 plt.legend()
 plt.tight_layout()
 
 plt.savefig(
-    f"{FIGURES_DIR}/log_returns.png",
+    f"{FIGURES_DIR}/daily_log_returns.png",
     dpi=300,
     bbox_inches="tight"
 )
 
 plt.show()
+plt.close()
 
 
 # ============================================================
@@ -232,10 +437,11 @@ if len(comparison_companies) == 2:
     )
 
     plt.title(
-        f"Raw Price Comparison: {company_a} and {company_b}"
+        f"Raw Price Comparison: "
+        f"{company_a} and {company_b}"
     )
     plt.xlabel("Date")
-    plt.ylabel("Adjusted Closing Price (GBp)")
+    plt.ylabel("Adjusted Closing Price")
     plt.legend()
     plt.tight_layout()
 
@@ -246,6 +452,7 @@ if len(comparison_companies) == 2:
     )
 
     plt.show()
+    plt.close()
 
     plt.figure(figsize=(12, 6))
 
@@ -261,8 +468,16 @@ if len(comparison_companies) == 2:
         label=company_b
     )
 
+    plt.axhline(
+        y=1,
+        linestyle="--",
+        linewidth=1,
+        alpha=0.6
+    )
+
     plt.title(
-        f"Normalised Price Comparison: {company_a} and {company_b}"
+        f"Normalised Price Comparison: "
+        f"{company_a} and {company_b}"
     )
     plt.xlabel("Date")
     plt.ylabel("Growth Relative to Initial Price")
@@ -276,17 +491,27 @@ if len(comparison_companies) == 2:
     )
 
     plt.show()
+    plt.close()
 
 
 # ============================================================
-# Statistical comparison of daily and log returns
+# Statistical comparison of percentage and log returns
 # ============================================================
 
-daily_returns_stacked = daily_returns.stack().dropna()
-log_returns_stacked = log_returns.stack().dropna()
+daily_returns_stacked = (
+    daily_returns
+    .stack()
+    .dropna()
+)
+
+log_returns_stacked = (
+    log_returns
+    .stack()
+    .dropna()
+)
 
 return_comparison = pd.DataFrame({
-    "Daily Returns": [
+    "Daily Percentage Returns": [
         daily_returns_stacked.mean(),
         daily_returns_stacked.std(),
         daily_returns_stacked.min(),
@@ -312,14 +537,14 @@ return_comparison = pd.DataFrame({
 ])
 
 print("\n" + "=" * 60)
-print("DAILY RETURNS VS LOG RETURNS")
+print("DAILY PERCENTAGE RETURNS VS LOG RETURNS")
 print("=" * 60)
 
 print(return_comparison)
 
 
 # ============================================================
-# Distribution of daily returns
+# Distribution of daily percentage returns
 # ============================================================
 
 plt.figure(figsize=(10, 6))
@@ -329,7 +554,9 @@ plt.hist(
     bins=100
 )
 
-plt.title("Distribution of Daily Percentage Returns")
+plt.title(
+    "Distribution of Daily Percentage Returns"
+)
 plt.xlabel("Daily Return")
 plt.ylabel("Frequency")
 plt.tight_layout()
@@ -341,6 +568,7 @@ plt.savefig(
 )
 
 plt.show()
+plt.close()
 
 
 # ============================================================
@@ -354,7 +582,9 @@ plt.hist(
     bins=100
 )
 
-plt.title("Distribution of Daily Log Returns")
+plt.title(
+    "Distribution of Daily Log Returns"
+)
 plt.xlabel("Log Return")
 plt.ylabel("Frequency")
 plt.tight_layout()
@@ -366,27 +596,32 @@ plt.savefig(
 )
 
 plt.show()
+plt.close()
 
 
 # ============================================================
-# Measure similarity between daily and log returns
+# Similarity between percentage and log returns
 # ============================================================
 
 common_values = pd.concat(
     [
-        daily_returns.stack().rename("Daily Returns"),
-        log_returns.stack().rename("Log Returns")
+        daily_returns.stack().rename(
+            "Daily Percentage Returns"
+        ),
+        log_returns.stack().rename(
+            "Log Returns"
+        )
     ],
     axis=1
 ).dropna()
 
 return_correlation = common_values[
-    "Daily Returns"
+    "Daily Percentage Returns"
 ].corr(
     common_values["Log Returns"]
 )
 
-print("\nCorrelation between daily and log returns:")
+print("\nCorrelation between daily percentage and log returns:")
 print(f"{return_correlation:.6f}")
 
 
@@ -395,7 +630,7 @@ print(f"{return_correlation:.6f}")
 # ============================================================
 
 prices.to_csv(
-    f"{PROCESSED_DATA_DIR}/raw_adjusted_prices.csv"
+    f"{PROCESSED_DATA_DIR}/cleaned_adjusted_prices.csv"
 )
 
 normalised_prices.to_csv(
@@ -403,7 +638,7 @@ normalised_prices.to_csv(
 )
 
 daily_returns.to_csv(
-    f"{PROCESSED_DATA_DIR}/daily_returns.csv"
+    f"{PROCESSED_DATA_DIR}/daily_percentage_returns.csv"
 )
 
 log_returns.to_csv(
@@ -416,10 +651,62 @@ return_comparison.to_csv(
 
 
 # ============================================================
-# Final observations
+# Final validation and summary
 # ============================================================
 
 print("\n" + "=" * 60)
+print("FINAL DATASET SUMMARY")
+print("=" * 60)
 
-print("Processed datasets saved to:", PROCESSED_DATA_DIR)
-print("Figures saved to:", FIGURES_DIR)
+print(
+    f"Companies originally downloaded: "
+    f"{data.columns.get_level_values(0).nunique()}"
+)
+
+print(
+    f"Companies excluded: "
+    f"{len(excluded_companies)}"
+)
+
+print(
+    f"Companies retained: "
+    f"{prices.shape[1]}"
+)
+
+print(
+    f"Trading days in cleaned price data: "
+    f"{prices.shape[0]}"
+)
+
+print(
+    f"Trading days in return datasets: "
+    f"{daily_returns.shape[0]}"
+)
+
+print(
+    f"Total missing values in cleaned prices: "
+    f"{prices.isna().sum().sum()}"
+)
+
+print(
+    f"Total missing values in normalised prices: "
+    f"{normalised_prices.isna().sum().sum()}"
+)
+
+print(
+    f"Total missing values in daily returns: "
+    f"{daily_returns.isna().sum().sum()}"
+)
+
+print(
+    f"Total missing values in log returns: "
+    f"{log_returns.isna().sum().sum()}"
+)
+
+print("\nProcessed datasets saved to:")
+print(PROCESSED_DATA_DIR)
+
+print("\nFigures saved to:")
+print(FIGURES_DIR)
+
+print("\nProcessing completed successfully.")
