@@ -1,4 +1,4 @@
-Cluster,Mean Annualised Return (%),Mean Annualised Volatility (%),Mean Maximum Drawdown (%)
-1,19.97,27.12,-34.62
-2,0.63,25.77,-43.24
-3,62.14,42.09,-55.09
+Cluster,Cluster Name,Mean Annualised Return (%),Mean Annualised Volatility (%),Mean Maximum Drawdown (%)
+1,Stable or Modest Growth,1.22,27.37,-46.97
+2,Exceptional Growth,56.24,39.21,-48.02
+3,Strong Sustained Growth,19.91,27.8,-34.07

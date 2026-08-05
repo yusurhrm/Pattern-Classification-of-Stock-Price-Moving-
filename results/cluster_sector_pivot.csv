@@ -1,4 +1,4 @@
-Cluster,Consumer Goods,Energy,Financials,Healthcare,Industrials,Mining,Retail,Technology and Media,Utilities
-1,1,2,7,1,0,1,1,1,1
-2,4,0,3,4,2,2,4,1,4
-3,0,0,0,0,1,0,0,0,0
+Cluster,Cluster Name,Aerospace and Defence,Airlines,Banking,Chemicals,Consumer Goods,Consumer Services,Distribution,Energy,Financial Services,Healthcare,Housebuilding,Industrials,Insurance,Investment Trust,Mining,Packaging,Property,Retail,Technology and Media,Telecommunications,Travel and Leisure,Utilities
+1,Stable or Modest Growth,0,0,0,1,7,2,2,0,7,3,3,6,4,5,5,1,5,7,3,2,1,4
+2,Exceptional Growth,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+3,Strong Sustained Growth,2,1,5,0,2,1,0,2,0,1,0,2,2,1,1,0,0,1,4,1,1,1

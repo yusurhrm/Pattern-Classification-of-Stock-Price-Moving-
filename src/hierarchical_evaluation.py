@@ -15,14 +15,16 @@ from sklearn.metrics import (
 # File paths and settings
 # ============================================================
 
-DATA_PATH = "data/raw/ftse100_40_companies.csv"
+# Cleaned and normalised dataset containing the 98 companies
+# retained from the FTSE 100 dataset.
+DATA_PATH = "data/processed/normalised_prices.csv"
+
 RESULTS_DIR = "results/hierarchical_evaluation"
-FIGURES_DIR = "figures/hierarchical_evaluation"
+FIGURES_DIR = "results/figures/hierarchical_evaluation"
 
 MIN_CLUSTERS = 2
 MAX_CLUSTERS = 10
 
-# Linkage methods to compare
 LINKAGE_METHODS = [
     "ward",
     "complete",
@@ -35,130 +37,109 @@ os.makedirs(FIGURES_DIR, exist_ok=True)
 
 
 # ============================================================
-# Load stock-price data
+# Load cleaned normalised stock-price data
 # ============================================================
 
-data = pd.read_csv(
+normalised_prices = pd.read_csv(
     DATA_PATH,
-    header=[0, 1],
     index_col=0,
     parse_dates=True,
 )
 
-print("\nOriginal dataset shape:")
-print(data.shape)
+normalised_prices = normalised_prices.sort_index()
+normalised_prices = normalised_prices.sort_index(axis=1)
 
-print("\nColumn level names:")
-print(data.columns.names)
+print("=" * 80)
+print("HIERARCHICAL CLUSTERING EVALUATION")
+print("=" * 80)
 
+print(f"\nDataset shape: {normalised_prices.shape}")
 
-# ============================================================
-# Extract adjusted closing prices
-# ============================================================
-
-try:
-    prices = data.xs(
-        "Adj Close",
-        level="Price",
-        axis=1,
-    )
-except (KeyError, ValueError):
-    # Fallback in case the column level is unnamed
-    prices = data.xs(
-        "Adj Close",
-        level=0,
-        axis=1,
-    )
-
-prices = prices.apply(
-    pd.to_numeric,
-    errors="coerce",
+print(
+    f"Date range: {normalised_prices.index.min()} "
+    f"to {normalised_prices.index.max()}"
 )
 
-prices = prices.sort_index()
-
-# Remove duplicated dates if present
-prices = prices.loc[
-    ~prices.index.duplicated(keep="first")
-]
-
-print("\nAdjusted closing-price shape:")
-print(prices.shape)
-
-print("\nCompanies included:")
-print(prices.columns.tolist())
-
-
-# ============================================================
-# Check and handle missing values
-# ============================================================
-
-missing_before = prices.isna().sum()
-
-missing_before = missing_before[
-    missing_before > 0
-].sort_values(ascending=False)
-
-print("\nMissing values before filling:")
-
-if missing_before.empty:
-    print("No missing values found.")
-else:
-    print(missing_before)
-
-# Fill isolated missing observations
-prices = prices.ffill().bfill()
-
-# Replace infinite values
-prices = prices.replace(
-    [np.inf, -np.inf],
-    np.nan,
+print(
+    f"Number of companies: "
+    f"{normalised_prices.shape[1]}"
 )
 
-if prices.isna().any().any():
-    unresolved = prices.isna().sum()
+print(
+    f"Number of trading days: "
+    f"{normalised_prices.shape[0]}"
+)
 
-    unresolved = unresolved[
-        unresolved > 0
+
+# ============================================================
+# Validate input data
+# ============================================================
+
+if normalised_prices.empty:
+    raise ValueError(
+        "The normalised-price dataset is empty."
+    )
+
+missing_values = int(
+    normalised_prices.isna().sum().sum()
+)
+
+print(f"\nTotal missing values: {missing_values}")
+
+if missing_values > 0:
+
+    companies_with_missing = (
+        normalised_prices.columns[
+            normalised_prices.isna().any()
+        ]
+        .tolist()
+    )
+
+    raise ValueError(
+        "Missing values were found for: "
+        + ", ".join(companies_with_missing)
+    )
+
+if not np.isfinite(
+    normalised_prices.to_numpy()
+).all():
+
+    raise ValueError(
+        "The dataset contains infinite or invalid values."
+    )
+
+constant_companies = (
+    normalised_prices.columns[
+        normalised_prices.nunique() <= 1
     ]
-
-    raise ValueError(
-        "Missing values remain after preprocessing:\n"
-        f"{unresolved}"
-    )
-
-
-# ============================================================
-# Normalise stock prices
-# ============================================================
-
-# Each company begins at 1.0
-normalised_prices = prices.div(
-    prices.iloc[0],
-    axis="columns",
+    .tolist()
 )
 
-normalised_prices = normalised_prices.replace(
-    [np.inf, -np.inf],
-    np.nan,
-)
+if constant_companies:
 
-if normalised_prices.isna().any().any():
     raise ValueError(
-        "Invalid values were produced during normalisation."
+        "Constant price series were found for: "
+        + ", ".join(constant_companies)
     )
 
-print("\nNormalised dataset shape:")
-print(normalised_prices.shape)
+print("Input validation completed successfully.")
 
 
 # ============================================================
 # Prepare data for clustering
 # ============================================================
 
-# Rows must represent companies
-# Columns represent trading dates
+# Before transposing:
+# rows = trading dates
+# columns = companies
+#
+# After transposing:
+# rows = companies
+# columns = normalised prices across time
+
 X = normalised_prices.T
+
+ticker_names = X.index.tolist()
 
 print("\nClustering matrix shape:")
 print(X.shape)
@@ -168,7 +149,30 @@ print(
     f"{X.shape[1]} trading-day observations."
 )
 
-ticker_names = X.index.tolist()
+
+# ============================================================
+# Select valid values of k
+# ============================================================
+
+maximum_k = min(
+    MAX_CLUSTERS,
+    X.shape[0] - 1,
+)
+
+if maximum_k < MIN_CLUSTERS:
+    raise ValueError(
+        "There are not enough companies to evaluate clustering."
+    )
+
+k_values = list(
+    range(
+        MIN_CLUSTERS,
+        maximum_k + 1,
+    )
+)
+
+print("\nValues of k to evaluate:")
+print(k_values)
 
 
 # ============================================================
@@ -178,6 +182,7 @@ ticker_names = X.index.tolist()
 evaluation_results = []
 cluster_size_results = []
 cluster_assignment_results = []
+linkage_matrices = {}
 
 for linkage_method in LINKAGE_METHODS:
 
@@ -188,65 +193,89 @@ for linkage_method in LINKAGE_METHODS:
     )
     print("=" * 80)
 
-    # Ward linkage is defined using Euclidean distance.
-    # The other methods also use Euclidean distance here to keep
-    # the algorithm comparison consistent with K-Means.
+    # All linkage methods use Euclidean distance so that the
+    # comparison remains consistent with the K-Means analysis.
+    #
+    # Ward linkage specifically requires Euclidean distance.
     linkage_matrix = linkage(
-        X.values,
+        X.to_numpy(),
         method=linkage_method,
         metric="euclidean",
     )
 
-    for k in range(
-        MIN_CLUSTERS,
-        MAX_CLUSTERS + 1,
-    ):
+    linkage_matrices[
+        linkage_method
+    ] = linkage_matrix
 
-        # fcluster labels begin at 1
+    for k in k_values:
+
         labels = fcluster(
             linkage_matrix,
             t=k,
             criterion="maxclust",
         )
 
-        unique_labels = np.unique(labels)
-        actual_clusters = len(unique_labels)
+        unique_labels = np.unique(
+            labels
+        )
 
-        # Some linkage configurations may return fewer than k clusters
-        # because of tied distances.
+        actual_clusters = len(
+            unique_labels
+        )
+
         if actual_clusters < 2:
+
             print(
                 f"k={k}: skipped because only "
                 f"{actual_clusters} cluster was produced."
             )
+
             continue
 
         if actual_clusters >= len(X):
+
             print(
-                f"k={k}: skipped because each observation "
+                f"k={k}: skipped because each company "
                 "would form its own cluster."
             )
+
             continue
 
+        cluster_sizes = (
+            pd.Series(
+                labels
+            )
+            .value_counts()
+            .sort_index()
+        )
+
         silhouette = silhouette_score(
-            X.values,
+            X.to_numpy(),
             labels,
             metric="euclidean",
         )
 
         davies_bouldin = davies_bouldin_score(
-            X.values,
+            X.to_numpy(),
             labels,
         )
 
         calinski_harabasz = calinski_harabasz_score(
-            X.values,
+            X.to_numpy(),
             labels,
         )
 
-        cluster_sizes = pd.Series(
-            labels
-        ).value_counts().sort_index()
+        smallest_cluster = int(
+            cluster_sizes.min()
+        )
+
+        largest_cluster = int(
+            cluster_sizes.max()
+        )
+
+        singleton_clusters = int(
+            (cluster_sizes == 1).sum()
+        )
 
         evaluation_results.append(
             {
@@ -256,45 +285,58 @@ for linkage_method in LINKAGE_METHODS:
                 "Silhouette Score": silhouette,
                 "Davies-Bouldin Index": davies_bouldin,
                 "Calinski-Harabasz Index": calinski_harabasz,
-                "Smallest Cluster": cluster_sizes.min(),
-                "Largest Cluster": cluster_sizes.max(),
-                "Singleton Clusters": int(
-                    (cluster_sizes == 1).sum()
-                ),
+                "Smallest Cluster": smallest_cluster,
+                "Largest Cluster": largest_cluster,
+                "Singleton Clusters": singleton_clusters,
             }
         )
 
-        for cluster_number, cluster_size in (
-            cluster_sizes.items()
-        ):
+        for (
+            cluster_number,
+            cluster_size,
+        ) in cluster_sizes.items():
+
             cluster_size_results.append(
                 {
                     "Linkage": linkage_method,
                     "k": k,
-                    "Cluster": cluster_number,
-                    "Cluster Size": cluster_size,
+                    "Cluster": int(
+                        cluster_number
+                    ),
+                    "Cluster Size": int(
+                        cluster_size
+                    ),
                 }
             )
 
-        for ticker, cluster_number in zip(
+        for (
+            ticker,
+            cluster_number,
+        ) in zip(
             ticker_names,
             labels,
         ):
+
             cluster_assignment_results.append(
                 {
                     "Linkage": linkage_method,
                     "k": k,
                     "Ticker": ticker,
-                    "Cluster": cluster_number,
+                    "Cluster": int(
+                        cluster_number
+                    ),
                 }
             )
 
         print(
             f"k={k:<2} | "
+            f"Actual={actual_clusters:<2} | "
             f"Silhouette={silhouette:.4f} | "
             f"DB={davies_bouldin:.4f} | "
             f"CH={calinski_harabasz:.2f} | "
-            f"Sizes={cluster_sizes.to_dict()}"
+            f"Smallest={smallest_cluster:<2} | "
+            f"Largest={largest_cluster:<2} | "
+            f"Singletons={singleton_clusters}"
         )
 
 
@@ -356,6 +398,34 @@ cluster_assignments_df.to_csv(
 
 
 # ============================================================
+# Save linkage matrices
+# ============================================================
+
+for (
+    linkage_method,
+    linkage_matrix,
+) in linkage_matrices.items():
+
+    linkage_table = pd.DataFrame(
+        linkage_matrix,
+        columns=[
+            "Cluster 1",
+            "Cluster 2",
+            "Linkage Distance",
+            "Cluster Size",
+        ],
+    )
+
+    linkage_table.to_csv(
+        os.path.join(
+            RESULTS_DIR,
+            f"{linkage_method}_linkage_matrix.csv",
+        ),
+        index=False,
+    )
+
+
+# ============================================================
 # Identify best result for each linkage method
 # ============================================================
 
@@ -365,10 +435,12 @@ best_by_silhouette = (
         by=[
             "Linkage",
             "Silhouette Score",
+            "Singleton Clusters",
         ],
         ascending=[
             True,
             False,
+            True,
         ],
     )
     .groupby(
@@ -384,8 +456,10 @@ best_by_davies_bouldin = (
         by=[
             "Linkage",
             "Davies-Bouldin Index",
+            "Singleton Clusters",
         ],
         ascending=[
+            True,
             True,
             True,
         ],
@@ -403,10 +477,12 @@ best_by_calinski_harabasz = (
         by=[
             "Linkage",
             "Calinski-Harabasz Index",
+            "Singleton Clusters",
         ],
         ascending=[
             True,
             False,
+            True,
         ],
     )
     .groupby(
@@ -442,30 +518,129 @@ best_by_calinski_harabasz.to_csv(
 
 
 # ============================================================
-# Overall rankings
+# Identify overall metric optima
 # ============================================================
 
-# Higher silhouette is better
+overall_best_silhouette = evaluation_df.loc[
+    evaluation_df[
+        "Silhouette Score"
+    ].idxmax()
+]
+
+overall_best_davies_bouldin = evaluation_df.loc[
+    evaluation_df[
+        "Davies-Bouldin Index"
+    ].idxmin()
+]
+
+overall_best_calinski_harabasz = evaluation_df.loc[
+    evaluation_df[
+        "Calinski-Harabasz Index"
+    ].idxmax()
+]
+
+overall_metric_summary = pd.DataFrame(
+    [
+        {
+            "Metric": "Silhouette Score",
+            "Best Linkage": overall_best_silhouette[
+                "Linkage"
+            ],
+            "Best k": int(
+                overall_best_silhouette[
+                    "Requested k"
+                ]
+            ),
+            "Metric Value": overall_best_silhouette[
+                "Silhouette Score"
+            ],
+            "Singleton Clusters": int(
+                overall_best_silhouette[
+                    "Singleton Clusters"
+                ]
+            ),
+        },
+        {
+            "Metric": "Davies-Bouldin Index",
+            "Best Linkage": overall_best_davies_bouldin[
+                "Linkage"
+            ],
+            "Best k": int(
+                overall_best_davies_bouldin[
+                    "Requested k"
+                ]
+            ),
+            "Metric Value": overall_best_davies_bouldin[
+                "Davies-Bouldin Index"
+            ],
+            "Singleton Clusters": int(
+                overall_best_davies_bouldin[
+                    "Singleton Clusters"
+                ]
+            ),
+        },
+        {
+            "Metric": "Calinski-Harabasz Index",
+            "Best Linkage": overall_best_calinski_harabasz[
+                "Linkage"
+            ],
+            "Best k": int(
+                overall_best_calinski_harabasz[
+                    "Requested k"
+                ]
+            ),
+            "Metric Value": overall_best_calinski_harabasz[
+                "Calinski-Harabasz Index"
+            ],
+            "Singleton Clusters": int(
+                overall_best_calinski_harabasz[
+                    "Singleton Clusters"
+                ]
+            ),
+        },
+    ]
+)
+
+overall_metric_summary.to_csv(
+    os.path.join(
+        RESULTS_DIR,
+        "hierarchical_overall_metric_optima.csv",
+    ),
+    index=False,
+)
+
+
+# ============================================================
+# Calculate overall rankings
+# ============================================================
+
+# Higher silhouette score is better.
 evaluation_df["Silhouette Rank"] = (
-    evaluation_df["Silhouette Score"]
+    evaluation_df[
+        "Silhouette Score"
+    ]
     .rank(
         ascending=False,
         method="min",
     )
 )
 
-# Lower Davies-Bouldin is better
+# Lower Davies-Bouldin index is better.
 evaluation_df["Davies-Bouldin Rank"] = (
-    evaluation_df["Davies-Bouldin Index"]
+    evaluation_df[
+        "Davies-Bouldin Index"
+    ]
     .rank(
         ascending=True,
         method="min",
     )
 )
 
-# Higher Calinski-Harabasz is better
+# Higher Calinski-Harabasz index is better.
 evaluation_df["Calinski-Harabasz Rank"] = (
-    evaluation_df["Calinski-Harabasz Index"]
+    evaluation_df[
+        "Calinski-Harabasz Index"
+    ]
     .rank(
         ascending=False,
         method="min",
@@ -487,19 +662,62 @@ ranked_results = evaluation_df.sort_values(
     by=[
         "Mean Metric Rank",
         "Singleton Clusters",
+        "Smallest Cluster",
         "Silhouette Score",
     ],
     ascending=[
         True,
         True,
         False,
+        False,
     ],
 )
 
+ranked_results_path = os.path.join(
+    RESULTS_DIR,
+    "hierarchical_ranked_results.csv",
+)
+
 ranked_results.to_csv(
+    ranked_results_path,
+    index=False,
+)
+
+# Save the evaluation file again with the ranking columns.
+evaluation_df.to_csv(
+    evaluation_path,
+    index=False,
+)
+
+
+# ============================================================
+# Create cluster-balance score
+# ============================================================
+
+evaluation_df["Cluster Size Ratio"] = (
+    evaluation_df[
+        "Largest Cluster"
+    ]
+    / evaluation_df[
+        "Smallest Cluster"
+    ]
+)
+
+cluster_balance_df = evaluation_df[
+    [
+        "Linkage",
+        "Requested k",
+        "Smallest Cluster",
+        "Largest Cluster",
+        "Cluster Size Ratio",
+        "Singleton Clusters",
+    ]
+].copy()
+
+cluster_balance_df.to_csv(
     os.path.join(
         RESULTS_DIR,
-        "hierarchical_ranked_results.csv",
+        "hierarchical_cluster_balance.csv",
     ),
     index=False,
 )
@@ -515,10 +733,15 @@ plt.figure(
 
 for linkage_method in LINKAGE_METHODS:
 
-    method_results = evaluation_df.loc[
-        evaluation_df["Linkage"]
-        == linkage_method
-    ]
+    method_results = (
+        evaluation_df.loc[
+            evaluation_df["Linkage"]
+            == linkage_method
+        ]
+        .sort_values(
+            "Requested k"
+        )
+    )
 
     plt.plot(
         method_results["Requested k"],
@@ -527,20 +750,27 @@ for linkage_method in LINKAGE_METHODS:
         label=linkage_method.capitalize(),
     )
 
-plt.xlabel("Number of clusters (k)")
-plt.ylabel("Silhouette score")
+plt.xlabel(
+    "Number of Clusters (k)"
+)
+
+plt.ylabel(
+    "Silhouette Score"
+)
+
 plt.title(
-    "Hierarchical Clustering Silhouette Scores"
+    f"Hierarchical Clustering Silhouette Scores "
+    f"({X.shape[0]} Companies)"
 )
+
 plt.xticks(
-    range(
-        MIN_CLUSTERS,
-        MAX_CLUSTERS + 1,
-    )
+    k_values
 )
+
 plt.grid(
     alpha=0.3
 )
+
 plt.legend()
 plt.tight_layout()
 
@@ -567,10 +797,15 @@ plt.figure(
 
 for linkage_method in LINKAGE_METHODS:
 
-    method_results = evaluation_df.loc[
-        evaluation_df["Linkage"]
-        == linkage_method
-    ]
+    method_results = (
+        evaluation_df.loc[
+            evaluation_df["Linkage"]
+            == linkage_method
+        ]
+        .sort_values(
+            "Requested k"
+        )
+    )
 
     plt.plot(
         method_results["Requested k"],
@@ -579,20 +814,27 @@ for linkage_method in LINKAGE_METHODS:
         label=linkage_method.capitalize(),
     )
 
-plt.xlabel("Number of clusters (k)")
-plt.ylabel("Davies-Bouldin index")
+plt.xlabel(
+    "Number of Clusters (k)"
+)
+
+plt.ylabel(
+    "Davies-Bouldin Index"
+)
+
 plt.title(
-    "Hierarchical Clustering Davies-Bouldin Indices"
+    f"Hierarchical Clustering Davies-Bouldin Indices "
+    f"({X.shape[0]} Companies)"
 )
+
 plt.xticks(
-    range(
-        MIN_CLUSTERS,
-        MAX_CLUSTERS + 1,
-    )
+    k_values
 )
+
 plt.grid(
     alpha=0.3
 )
+
 plt.legend()
 plt.tight_layout()
 
@@ -619,10 +861,15 @@ plt.figure(
 
 for linkage_method in LINKAGE_METHODS:
 
-    method_results = evaluation_df.loc[
-        evaluation_df["Linkage"]
-        == linkage_method
-    ]
+    method_results = (
+        evaluation_df.loc[
+            evaluation_df["Linkage"]
+            == linkage_method
+        ]
+        .sort_values(
+            "Requested k"
+        )
+    )
 
     plt.plot(
         method_results["Requested k"],
@@ -631,20 +878,27 @@ for linkage_method in LINKAGE_METHODS:
         label=linkage_method.capitalize(),
     )
 
-plt.xlabel("Number of clusters (k)")
-plt.ylabel("Calinski-Harabasz index")
+plt.xlabel(
+    "Number of Clusters (k)"
+)
+
+plt.ylabel(
+    "Calinski-Harabasz Index"
+)
+
 plt.title(
-    "Hierarchical Clustering Calinski-Harabasz Indices"
+    f"Hierarchical Clustering Calinski-Harabasz Indices "
+    f"({X.shape[0]} Companies)"
 )
+
 plt.xticks(
-    range(
-        MIN_CLUSTERS,
-        MAX_CLUSTERS + 1,
-    )
+    k_values
 )
+
 plt.grid(
     alpha=0.3
 )
+
 plt.legend()
 plt.tight_layout()
 
@@ -671,10 +925,15 @@ plt.figure(
 
 for linkage_method in LINKAGE_METHODS:
 
-    method_results = evaluation_df.loc[
-        evaluation_df["Linkage"]
-        == linkage_method
-    ]
+    method_results = (
+        evaluation_df.loc[
+            evaluation_df["Linkage"]
+            == linkage_method
+        ]
+        .sort_values(
+            "Requested k"
+        )
+    )
 
     plt.plot(
         method_results["Requested k"],
@@ -683,20 +942,27 @@ for linkage_method in LINKAGE_METHODS:
         label=linkage_method.capitalize(),
     )
 
-plt.xlabel("Number of clusters (k)")
-plt.ylabel("Number of singleton clusters")
+plt.xlabel(
+    "Number of Clusters (k)"
+)
+
+plt.ylabel(
+    "Number of Singleton Clusters"
+)
+
 plt.title(
-    "Singleton Clusters by Linkage Method"
+    f"Singleton Clusters by Linkage Method "
+    f"({X.shape[0]} Companies)"
 )
+
 plt.xticks(
-    range(
-        MIN_CLUSTERS,
-        MAX_CLUSTERS + 1,
-    )
+    k_values
 )
+
 plt.grid(
     alpha=0.3
 )
+
 plt.legend()
 plt.tight_layout()
 
@@ -714,15 +980,149 @@ plt.close()
 
 
 # ============================================================
+# Plot 5: Smallest cluster sizes
+# ============================================================
+
+plt.figure(
+    figsize=(10, 6)
+)
+
+for linkage_method in LINKAGE_METHODS:
+
+    method_results = (
+        evaluation_df.loc[
+            evaluation_df["Linkage"]
+            == linkage_method
+        ]
+        .sort_values(
+            "Requested k"
+        )
+    )
+
+    plt.plot(
+        method_results["Requested k"],
+        method_results["Smallest Cluster"],
+        marker="o",
+        label=linkage_method.capitalize(),
+    )
+
+plt.xlabel(
+    "Number of Clusters (k)"
+)
+
+plt.ylabel(
+    "Smallest Cluster Size"
+)
+
+plt.title(
+    f"Smallest Hierarchical Cluster by Linkage Method "
+    f"({X.shape[0]} Companies)"
+)
+
+plt.xticks(
+    k_values
+)
+
+plt.grid(
+    alpha=0.3
+)
+
+plt.legend()
+plt.tight_layout()
+
+plt.savefig(
+    os.path.join(
+        FIGURES_DIR,
+        "hierarchical_smallest_cluster_sizes.png",
+    ),
+    dpi=300,
+    bbox_inches="tight",
+)
+
+plt.show()
+plt.close()
+
+
+# ============================================================
+# Plot 6: Largest cluster sizes
+# ============================================================
+
+plt.figure(
+    figsize=(10, 6)
+)
+
+for linkage_method in LINKAGE_METHODS:
+
+    method_results = (
+        evaluation_df.loc[
+            evaluation_df["Linkage"]
+            == linkage_method
+        ]
+        .sort_values(
+            "Requested k"
+        )
+    )
+
+    plt.plot(
+        method_results["Requested k"],
+        method_results["Largest Cluster"],
+        marker="o",
+        label=linkage_method.capitalize(),
+    )
+
+plt.xlabel(
+    "Number of Clusters (k)"
+)
+
+plt.ylabel(
+    "Largest Cluster Size"
+)
+
+plt.title(
+    f"Largest Hierarchical Cluster by Linkage Method "
+    f"({X.shape[0]} Companies)"
+)
+
+plt.xticks(
+    k_values
+)
+
+plt.grid(
+    alpha=0.3
+)
+
+plt.legend()
+plt.tight_layout()
+
+plt.savefig(
+    os.path.join(
+        FIGURES_DIR,
+        "hierarchical_largest_cluster_sizes.png",
+    ),
+    dpi=300,
+    bbox_inches="tight",
+)
+
+plt.show()
+plt.close()
+
+
+# ============================================================
 # Save separate results for each linkage method
 # ============================================================
 
 for linkage_method in LINKAGE_METHODS:
 
-    method_results = evaluation_df.loc[
-        evaluation_df["Linkage"]
-        == linkage_method
-    ].copy()
+    method_results = (
+        evaluation_df.loc[
+            evaluation_df["Linkage"]
+            == linkage_method
+        ]
+        .sort_values(
+            "Requested k"
+        )
+        .copy()
+    )
 
     method_results.to_csv(
         os.path.join(
@@ -734,15 +1134,121 @@ for linkage_method in LINKAGE_METHODS:
 
 
 # ============================================================
-# Print summaries
+# Save candidate assignments for k = 2, 3 and 4
 # ============================================================
 
-print("\n" + "=" * 90)
+candidate_k_values = [
+    k
+    for k in [2, 3, 4]
+    if k in k_values
+]
+
+candidate_assignments_df = (
+    cluster_assignments_df.loc[
+        cluster_assignments_df[
+            "k"
+        ].isin(
+            candidate_k_values
+        )
+    ]
+    .copy()
+)
+
+candidate_assignments_df.to_csv(
+    os.path.join(
+        RESULTS_DIR,
+        "hierarchical_candidate_assignments.csv",
+    ),
+    index=False,
+)
+
+
+# ============================================================
+# Create candidate-cluster summary
+# ============================================================
+
+candidate_summary = (
+    evaluation_df.loc[
+        evaluation_df[
+            "Requested k"
+        ].isin(
+            candidate_k_values
+        )
+    ][
+        [
+            "Linkage",
+            "Requested k",
+            "Actual Clusters",
+            "Silhouette Score",
+            "Davies-Bouldin Index",
+            "Calinski-Harabasz Index",
+            "Smallest Cluster",
+            "Largest Cluster",
+            "Singleton Clusters",
+            "Mean Metric Rank",
+        ]
+    ]
+    .sort_values(
+        by=[
+            "Requested k",
+            "Mean Metric Rank",
+        ]
+    )
+)
+
+candidate_summary.to_csv(
+    os.path.join(
+        RESULTS_DIR,
+        "hierarchical_candidate_summary.csv",
+    ),
+    index=False,
+)
+
+
+# ============================================================
+# Print full evaluation results
+# ============================================================
+
+print("\n" + "=" * 100)
 print("FULL HIERARCHICAL EVALUATION RESULTS")
-print("=" * 90)
+print("=" * 100)
 
 print(
     evaluation_df[
+        [
+            "Linkage",
+            "Requested k",
+            "Actual Clusters",
+            "Silhouette Score",
+            "Davies-Bouldin Index",
+            "Calinski-Harabasz Index",
+            "Smallest Cluster",
+            "Largest Cluster",
+            "Singleton Clusters",
+        ]
+    ]
+    .sort_values(
+        by=[
+            "Linkage",
+            "Requested k",
+        ]
+    )
+    .to_string(
+        index=False
+    )
+)
+
+
+# ============================================================
+# Print best results for each linkage
+# ============================================================
+
+print("\n" + "=" * 100)
+print("BEST RESULT FOR EACH LINKAGE: SILHOUETTE SCORE")
+print("=" * 100)
+
+print(
+    best_by_silhouette[
         [
             "Linkage",
             "Requested k",
@@ -759,29 +1265,9 @@ print(
 )
 
 
-print("\n" + "=" * 90)
-print("BEST RESULT FOR EACH LINKAGE: SILHOUETTE")
-print("=" * 90)
-
-print(
-    best_by_silhouette[
-        [
-            "Linkage",
-            "Requested k",
-            "Silhouette Score",
-            "Davies-Bouldin Index",
-            "Calinski-Harabasz Index",
-            "Singleton Clusters",
-        ]
-    ].to_string(
-        index=False
-    )
-)
-
-
-print("\n" + "=" * 90)
-print("BEST RESULT FOR EACH LINKAGE: DAVIES-BOULDIN")
-print("=" * 90)
+print("\n" + "=" * 100)
+print("BEST RESULT FOR EACH LINKAGE: DAVIES-BOULDIN INDEX")
+print("=" * 100)
 
 print(
     best_by_davies_bouldin[
@@ -791,6 +1277,8 @@ print(
             "Silhouette Score",
             "Davies-Bouldin Index",
             "Calinski-Harabasz Index",
+            "Smallest Cluster",
+            "Largest Cluster",
             "Singleton Clusters",
         ]
     ].to_string(
@@ -799,9 +1287,9 @@ print(
 )
 
 
-print("\n" + "=" * 90)
-print("BEST RESULT FOR EACH LINKAGE: CALINSKI-HARABASZ")
-print("=" * 90)
+print("\n" + "=" * 100)
+print("BEST RESULT FOR EACH LINKAGE: CALINSKI-HARABASZ INDEX")
+print("=" * 100)
 
 print(
     best_by_calinski_harabasz[
@@ -811,6 +1299,8 @@ print(
             "Silhouette Score",
             "Davies-Bouldin Index",
             "Calinski-Harabasz Index",
+            "Smallest Cluster",
+            "Largest Cluster",
             "Singleton Clusters",
         ]
     ].to_string(
@@ -819,9 +1309,28 @@ print(
 )
 
 
-print("\n" + "=" * 90)
+# ============================================================
+# Print overall metric optima
+# ============================================================
+
+print("\n" + "=" * 100)
+print("OVERALL BEST RESULT FOR EACH METRIC")
+print("=" * 100)
+
+print(
+    overall_metric_summary.to_string(
+        index=False
+    )
+)
+
+
+# ============================================================
+# Print top-ranked results
+# ============================================================
+
+print("\n" + "=" * 100)
 print("TOP 10 OVERALL RESULTS BY MEAN METRIC RANK")
-print("=" * 90)
+print("=" * 100)
 
 print(
     ranked_results[
@@ -850,23 +1359,29 @@ print(
 
 for linkage_method in LINKAGE_METHODS:
 
-    print("\n" + "=" * 90)
+    print("\n" + "=" * 100)
+
     print(
         f"{linkage_method.upper()} LINKAGE "
         "CLUSTER MEMBERSHIPS"
     )
-    print("=" * 90)
 
-    for k in [2, 3, 4]:
+    print("=" * 100)
+
+    for k in candidate_k_values:
 
         selected_assignments = (
             cluster_assignments_df.loc[
                 (
-                    cluster_assignments_df["Linkage"]
+                    cluster_assignments_df[
+                        "Linkage"
+                    ]
                     == linkage_method
                 )
                 & (
-                    cluster_assignments_df["k"]
+                    cluster_assignments_df[
+                        "k"
+                    ]
                     == k
                 )
             ]
@@ -879,7 +1394,9 @@ for linkage_method in LINKAGE_METHODS:
 
         grouped_tickers = (
             selected_assignments
-            .groupby("Cluster")["Ticker"]
+            .groupby(
+                "Cluster"
+            )["Ticker"]
             .apply(
                 lambda values: ", ".join(
                     sorted(values)
@@ -887,19 +1404,23 @@ for linkage_method in LINKAGE_METHODS:
             )
         )
 
-        for cluster_number, tickers in (
-            grouped_tickers.items()
-        ):
+        for (
+            cluster_number,
+            tickers,
+        ) in grouped_tickers.items():
 
-            cluster_size = (
-                selected_assignments[
-                    "Cluster"
-                ]
-                == cluster_number
-            ).sum()
+            cluster_size = int(
+                (
+                    selected_assignments[
+                        "Cluster"
+                    ]
+                    == cluster_number
+                )
+                .sum()
+            )
 
             print(
-                f"Cluster {cluster_number} "
+                f"\nCluster {cluster_number} "
                 f"({cluster_size} companies):"
             )
 
@@ -907,12 +1428,60 @@ for linkage_method in LINKAGE_METHODS:
 
 
 # ============================================================
+# Final validation
+# ============================================================
+
+expected_combinations = (
+    len(LINKAGE_METHODS)
+    * len(k_values)
+)
+
+actual_combinations = len(
+    evaluation_df
+)
+
+print("\n" + "=" * 100)
+print("HIERARCHICAL EVALUATION SUMMARY")
+print("=" * 100)
+
+print(
+    f"Companies analysed: "
+    f"{X.shape[0]}"
+)
+
+print(
+    f"Trading days analysed: "
+    f"{X.shape[1]}"
+)
+
+print(
+    f"Linkage methods evaluated: "
+    f"{', '.join(LINKAGE_METHODS)}"
+)
+
+print(
+    f"k values evaluated: "
+    f"{min(k_values)} to {max(k_values)}"
+)
+
+print(
+    f"Expected method-k combinations: "
+    f"{expected_combinations}"
+)
+
+print(
+    f"Valid method-k combinations: "
+    f"{actual_combinations}"
+)
+
+
+# ============================================================
 # Finished
 # ============================================================
 
-print("\n" + "=" * 90)
+print("\n" + "=" * 100)
 print("HIERARCHICAL EVALUATION COMPLETED")
-print("=" * 90)
+print("=" * 100)
 
 print("\nResults saved to:")
 
@@ -920,9 +1489,22 @@ saved_result_files = [
     evaluation_path,
     cluster_sizes_path,
     cluster_assignments_path,
+    ranked_results_path,
     os.path.join(
         RESULTS_DIR,
-        "hierarchical_ranked_results.csv",
+        "hierarchical_cluster_balance.csv",
+    ),
+    os.path.join(
+        RESULTS_DIR,
+        "hierarchical_candidate_assignments.csv",
+    ),
+    os.path.join(
+        RESULTS_DIR,
+        "hierarchical_candidate_summary.csv",
+    ),
+    os.path.join(
+        RESULTS_DIR,
+        "hierarchical_overall_metric_optima.csv",
     ),
     os.path.join(
         RESULTS_DIR,
@@ -948,9 +1530,12 @@ saved_figure_files = [
     "hierarchical_davies_bouldin_indices.png",
     "hierarchical_calinski_harabasz_indices.png",
     "hierarchical_singleton_clusters.png",
+    "hierarchical_smallest_cluster_sizes.png",
+    "hierarchical_largest_cluster_sizes.png",
 ]
 
 for filename in saved_figure_files:
+
     print(
         os.path.join(
             FIGURES_DIR,

@@ -1,212 +1,119 @@
 import os
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 
 from sklearn.cluster import KMeans
 from sklearn.metrics import (
-    silhouette_score,
+    calinski_harabasz_score,
     davies_bouldin_score,
-    calinski_harabasz_score
+    silhouette_score
 )
 
 
 # ============================================================
-# File paths
+# Configuration
 # ============================================================
 
-DATA_PATH = "data/raw/ftse100_40_companies.csv"
+DATA_PATH = "data/processed/normalised_prices.csv"
 RESULTS_DIR = "results"
-FIGURES_DIR = "figures"
+FIGURES_DIR = "results/figures"
+
+RANDOM_STATE = 42
+N_INIT = 20
+MAX_K = 10
+
+# Final value selected after considering:
+# - Elbow Method
+# - Silhouette Score
+# - Davies-Bouldin Index
+# - Calinski-Harabasz Index
+# - Cluster-size balance
+# - Interpretability
+FINAL_K = 3
 
 os.makedirs(RESULTS_DIR, exist_ok=True)
 os.makedirs(FIGURES_DIR, exist_ok=True)
 
 
 # ============================================================
-# Load the dataset
+# Load cleaned normalised price data
 # ============================================================
 
-data = pd.read_csv(
+normalised_prices = pd.read_csv(
     DATA_PATH,
-    header=[0, 1],
     index_col=0,
     parse_dates=True
 )
 
-print("\nOriginal dataset shape:")
-print(data.shape)
+normalised_prices = normalised_prices.sort_index()
+normalised_prices = normalised_prices.sort_index(axis=1)
 
-print("\nColumn level names:")
-print(data.columns.names)
+print("=" * 60)
+print("K-MEANS CLUSTERING ANALYSIS")
+print("=" * 60)
 
-
-# ============================================================
-# Extract adjusted closing prices
-# ============================================================
-
-prices = data.xs(
-    "Adj Close",
-    level="Price",
-    axis=1
+print(f"\nDataset shape: {normalised_prices.shape}")
+print(
+    f"Date range: {normalised_prices.index.min()} "
+    f"to {normalised_prices.index.max()}"
 )
-
-# Convert all values to numeric.
-# Any invalid values are converted to NaN.
-prices = prices.apply(
-    pd.to_numeric,
-    errors="coerce"
+print(
+    f"Number of companies: "
+    f"{normalised_prices.shape[1]}"
 )
-
-# Sort dates in chronological order.
-prices = prices.sort_index()
-
-# Remove duplicated dates, keeping the first occurrence.
-prices = prices.loc[
-    ~prices.index.duplicated(keep="first")
-]
-
-print("\nAdjusted closing price shape:")
-print(prices.shape)
-
-print("\nCompanies included:")
-print(prices.columns.tolist())
-
-
-# ============================================================
-# Inspect missing values
-# ============================================================
-
-missing_before = prices.isna().sum()
-missing_before = missing_before[
-    missing_before > 0
-].sort_values(ascending=False)
-
-print("\nMissing values before preprocessing:")
-
-if missing_before.empty:
-    print("No missing values found.")
-else:
-    print(missing_before)
-
-
-# Save the missing-value summary.
-missing_before.rename(
-    "Missing values before filling"
-).to_csv(
-    os.path.join(
-        RESULTS_DIR,
-        "kmeans_missing_values_before_filling.csv"
-    )
+print(
+    f"Number of trading days: "
+    f"{normalised_prices.shape[0]}"
 )
 
 
 # ============================================================
-# Handle missing values
+# Validate input data
 # ============================================================
 
-# Forward-fill missing values using the previous available price.
-prices = prices.ffill()
-
-# Backward-fill values missing at the beginning of a series.
-prices = prices.bfill()
-
-
-# Check whether any company still contains missing values.
-remaining_missing = prices.isna().sum()
-companies_with_remaining_nan = remaining_missing[
-    remaining_missing > 0
-].index.tolist()
-
-if companies_with_remaining_nan:
-    print(
-        "\nRemoving companies with unresolved missing values:"
-    )
-    print(companies_with_remaining_nan)
-
-    prices = prices.drop(
-        columns=companies_with_remaining_nan
+if normalised_prices.empty:
+    raise ValueError(
+        "The normalised-price dataset is empty."
     )
 
-
-# Remove companies whose initial price is zero.
-# Dividing by zero during normalisation would create infinity.
-zero_initial_price_companies = prices.columns[
-    prices.iloc[0] == 0
-].tolist()
-
-if zero_initial_price_companies:
-    print(
-        "\nRemoving companies with an initial price of zero:"
-    )
-    print(zero_initial_price_companies)
-
-    prices = prices.drop(
-        columns=zero_initial_price_companies
-    )
-
-
-# Remove columns containing infinite values, if any.
-prices = prices.replace(
-    [np.inf, -np.inf],
-    np.nan
-)
-
-infinite_or_missing_companies = prices.columns[
-    prices.isna().any()
-].tolist()
-
-if infinite_or_missing_companies:
-    print(
-        "\nRemoving companies with invalid values after preprocessing:"
-    )
-    print(infinite_or_missing_companies)
-
-    prices = prices.drop(
-        columns=infinite_or_missing_companies
-    )
-
-
-# ============================================================
-# Normalise prices
-# ============================================================
-
-# Each stock begins at 1.
-normalised_prices = prices.div(
-    prices.iloc[0],
-    axis="columns"
-)
-
-normalised_prices = normalised_prices.replace(
-    [np.inf, -np.inf],
-    np.nan
-)
-
-
-# Final validation.
-total_missing = int(
+missing_values = int(
     normalised_prices.isna().sum().sum()
 )
 
-if total_missing > 0:
+print(f"\nTotal missing values: {missing_values}")
+
+if missing_values > 0:
+    companies_with_missing = (
+        normalised_prices.columns[
+            normalised_prices.isna().any()
+        ].tolist()
+    )
+
     raise ValueError(
-        f"{total_missing} NaN values remain after preprocessing."
+        "Missing values were found for: "
+        + ", ".join(companies_with_missing)
     )
 
-if not np.isfinite(normalised_prices.to_numpy()).all():
+if not np.isfinite(
+    normalised_prices.to_numpy()
+).all():
     raise ValueError(
-        "The normalised dataset contains infinite or invalid values."
+        "The dataset contains infinite or invalid values."
     )
 
+constant_companies = normalised_prices.columns[
+    normalised_prices.nunique() <= 1
+].tolist()
 
-# Save the cleaned normalised data.
-normalised_prices.to_csv(
-    os.path.join(
-        RESULTS_DIR,
-        "normalised_prices_for_kmeans.csv"
+if constant_companies:
+    raise ValueError(
+        "Constant price series were found for: "
+        + ", ".join(constant_companies)
     )
-)
+
+print("Input validation completed successfully.")
 
 
 # ============================================================
@@ -214,104 +121,118 @@ normalised_prices.to_csv(
 # ============================================================
 
 # Before transposing:
-# Rows = dates
-# Columns = companies
+# rows = trading dates
+# columns = companies
 #
 # After transposing:
-# Rows = companies
-# Columns = daily normalised prices
+# rows = companies
+# columns = normalised prices through time
 
 X = normalised_prices.T
 
 print("\nFinal clustering data shape:")
 print(X.shape)
 
-print("\nNumber of companies:")
-print(X.shape[0])
-
-print("\nNumber of trading days:")
-print(X.shape[1])
-
-print("\nTotal missing values in X:")
-print(X.isna().sum().sum())
+print(f"Rows (companies): {X.shape[0]}")
+print(f"Columns (trading days): {X.shape[1]}")
 
 
-# Ensure the requested k values are valid.
-maximum_k = min(10, X.shape[0] - 1)
+# ============================================================
+# Select valid k values
+# ============================================================
+
+maximum_k = min(
+    MAX_K,
+    X.shape[0] - 1
+)
 
 if maximum_k < 2:
     raise ValueError(
-        "There are not enough companies to evaluate clustering."
+        "There are not enough companies for clustering."
     )
 
-k_values = range(2, maximum_k + 1)
+k_values = list(
+    range(2, maximum_k + 1)
+)
+
+print("\nValues of k to evaluate:")
+print(k_values)
 
 
 # ============================================================
-# Evaluate K-Means for different k values
+# Evaluate K-Means across candidate k values
 # ============================================================
 
-wcss_values = []
-silhouette_scores = []
-davies_bouldin_scores = []
-calinski_harabasz_scores = []
+evaluation_rows = []
 
 for k in k_values:
 
-    print(f"Evaluating k = {k}")
+    print(f"\nEvaluating k = {k}")
 
     model = KMeans(
         n_clusters=k,
-        random_state=42,
-        n_init=20
+        random_state=RANDOM_STATE,
+        n_init=N_INIT
     )
 
     labels = model.fit_predict(X)
 
-    # Within-cluster sum of squares.
-    wcss_values.append(
-        model.inertia_
+    cluster_sizes = pd.Series(
+        labels
+    ).value_counts()
+
+    smallest_cluster = int(
+        cluster_sizes.min()
     )
 
-    # Higher values indicate better-defined clusters.
-    silhouette_scores.append(
-        silhouette_score(
-            X,
-            labels,
-            metric="euclidean"
-        )
+    largest_cluster = int(
+        cluster_sizes.max()
     )
 
-    # Lower values indicate better clustering.
-    davies_bouldin_scores.append(
-        davies_bouldin_score(
-            X,
-            labels
-        )
+    singleton_clusters = int(
+        (cluster_sizes == 1).sum()
     )
 
-    # Higher values indicate better clustering.
-    calinski_harabasz_scores.append(
-        calinski_harabasz_score(
-            X,
-            labels
-        )
+    silhouette = silhouette_score(
+        X,
+        labels,
+        metric="euclidean"
     )
+
+    davies_bouldin = davies_bouldin_score(
+        X,
+        labels
+    )
+
+    calinski_harabasz = calinski_harabasz_score(
+        X,
+        labels
+    )
+
+    evaluation_rows.append({
+        "k": k,
+        "WCSS": model.inertia_,
+        "Silhouette Score": silhouette,
+        "Davies-Bouldin Index": davies_bouldin,
+        "Calinski-Harabasz Index": calinski_harabasz,
+        "Smallest Cluster": smallest_cluster,
+        "Largest Cluster": largest_cluster,
+        "Singleton Clusters": singleton_clusters
+    })
 
 
 # ============================================================
-# Create and save evaluation table
+# Save evaluation results
 # ============================================================
 
-results = pd.DataFrame({
-    "k": list(k_values),
-    "WCSS": wcss_values,
-    "Silhouette Score": silhouette_scores,
-    "Davies-Bouldin Index": davies_bouldin_scores,
-    "Calinski-Harabasz Index": calinski_harabasz_scores
-})
+results = pd.DataFrame(
+    evaluation_rows
+)
 
-print("\nK-Means evaluation results:")
+print("\n" + "=" * 60)
+print("K-MEANS EVALUATION RESULTS")
+print("=" * 60)
+
 print(
     results.to_string(
         index=False
@@ -328,19 +249,120 @@ results.to_csv(
 
 
 # ============================================================
-# Elbow method plot
+# Identify best k according to each metric
+# ============================================================
+
+best_silhouette_k = int(
+    results.loc[
+        results["Silhouette Score"].idxmax(),
+        "k"
+    ]
+)
+
+best_davies_bouldin_k = int(
+    results.loc[
+        results["Davies-Bouldin Index"].idxmin(),
+        "k"
+    ]
+)
+
+best_calinski_harabasz_k = int(
+    results.loc[
+        results["Calinski-Harabasz Index"].idxmax(),
+        "k"
+    ]
+)
+
+print("\n" + "=" * 60)
+print("BEST k ACCORDING TO EACH METRIC")
+print("=" * 60)
+
+print(
+    f"Highest Silhouette Score: "
+    f"k = {best_silhouette_k}"
+)
+
+print(
+    f"Lowest Davies-Bouldin Index: "
+    f"k = {best_davies_bouldin_k}"
+)
+
+print(
+    f"Highest Calinski-Harabasz Index: "
+    f"k = {best_calinski_harabasz_k}"
+)
+
+print(
+    f"Final selected k: "
+    f"k = {FINAL_K}"
+)
+
+
+# ============================================================
+# Save k-selection summary
+# ============================================================
+
+selection_summary = pd.DataFrame({
+    "Method": [
+        "Silhouette Score",
+        "Davies-Bouldin Index",
+        "Calinski-Harabasz Index",
+        "Final Selected k"
+    ],
+    "Selected k": [
+        best_silhouette_k,
+        best_davies_bouldin_k,
+        best_calinski_harabasz_k,
+        FINAL_K
+    ],
+    "Reason": [
+        "Highest Silhouette Score",
+        "Lowest Davies-Bouldin Index",
+        "Highest Calinski-Harabasz Index",
+        (
+            "Selected using all metrics, the elbow method, "
+            "cluster-size balance and interpretability"
+        )
+    ]
+})
+
+selection_summary.to_csv(
+    os.path.join(
+        RESULTS_DIR,
+        "kmeans_k_selection_summary.csv"
+    ),
+    index=False
+)
+
+print("\nK-selection summary:")
+print(
+    selection_summary.to_string(
+        index=False
+    )
+)
+
+
+# ============================================================
+# Elbow-method plot
 # ============================================================
 
 plt.figure(figsize=(8, 5))
 
 plt.plot(
-    list(k_values),
-    wcss_values,
+    results["k"],
+    results["WCSS"],
     marker="o"
 )
 
+plt.axvline(
+    FINAL_K,
+    linestyle="--",
+    label=f"Selected k = {FINAL_K}"
+)
+
 plt.title(
-    "K-Means Elbow Method"
+    f"K-Means Elbow Method "
+    f"({X.shape[0]} Companies)"
 )
 
 plt.xlabel(
@@ -348,14 +370,15 @@ plt.xlabel(
 )
 
 plt.ylabel(
-    "Within-Cluster Sum of Squares (WCSS)"
+    "Within-Cluster Sum of Squares"
 )
 
 plt.xticks(
-    list(k_values)
+    results["k"]
 )
 
 plt.grid(True)
+plt.legend()
 plt.tight_layout()
 
 plt.savefig(
@@ -372,19 +395,32 @@ plt.close()
 
 
 # ============================================================
-# Silhouette score plot
+# Silhouette-score plot
 # ============================================================
 
 plt.figure(figsize=(8, 5))
 
 plt.plot(
-    list(k_values),
-    silhouette_scores,
+    results["k"],
+    results["Silhouette Score"],
     marker="o"
 )
 
+plt.axvline(
+    best_silhouette_k,
+    linestyle="--",
+    label=f"Metric optimum k = {best_silhouette_k}"
+)
+
+plt.axvline(
+    FINAL_K,
+    linestyle=":",
+    label=f"Final selected k = {FINAL_K}"
+)
+
 plt.title(
-    "K-Means Silhouette Score"
+    f"K-Means Silhouette Scores "
+    f"({X.shape[0]} Companies)"
 )
 
 plt.xlabel(
@@ -396,10 +432,11 @@ plt.ylabel(
 )
 
 plt.xticks(
-    list(k_values)
+    results["k"]
 )
 
 plt.grid(True)
+plt.legend()
 plt.tight_layout()
 
 plt.savefig(
@@ -416,19 +453,32 @@ plt.close()
 
 
 # ============================================================
-# Davies-Bouldin index plot
+# Davies-Bouldin plot
 # ============================================================
 
 plt.figure(figsize=(8, 5))
 
 plt.plot(
-    list(k_values),
-    davies_bouldin_scores,
+    results["k"],
+    results["Davies-Bouldin Index"],
     marker="o"
 )
 
+plt.axvline(
+    best_davies_bouldin_k,
+    linestyle="--",
+    label=f"Metric optimum k = {best_davies_bouldin_k}"
+)
+
+plt.axvline(
+    FINAL_K,
+    linestyle=":",
+    label=f"Final selected k = {FINAL_K}"
+)
+
 plt.title(
-    "K-Means Davies-Bouldin Index"
+    f"K-Means Davies-Bouldin Index "
+    f"({X.shape[0]} Companies)"
 )
 
 plt.xlabel(
@@ -440,10 +490,11 @@ plt.ylabel(
 )
 
 plt.xticks(
-    list(k_values)
+    results["k"]
 )
 
 plt.grid(True)
+plt.legend()
 plt.tight_layout()
 
 plt.savefig(
@@ -460,19 +511,32 @@ plt.close()
 
 
 # ============================================================
-# Calinski-Harabasz index plot
+# Calinski-Harabasz plot
 # ============================================================
 
 plt.figure(figsize=(8, 5))
 
 plt.plot(
-    list(k_values),
-    calinski_harabasz_scores,
+    results["k"],
+    results["Calinski-Harabasz Index"],
     marker="o"
 )
 
+plt.axvline(
+    best_calinski_harabasz_k,
+    linestyle="--",
+    label=f"Metric optimum k = {best_calinski_harabasz_k}"
+)
+
+plt.axvline(
+    FINAL_K,
+    linestyle=":",
+    label=f"Final selected k = {FINAL_K}"
+)
+
 plt.title(
-    "K-Means Calinski-Harabasz Index"
+    f"K-Means Calinski-Harabasz Index "
+    f"({X.shape[0]} Companies)"
 )
 
 plt.xlabel(
@@ -484,10 +548,11 @@ plt.ylabel(
 )
 
 plt.xticks(
-    list(k_values)
+    results["k"]
 )
 
 plt.grid(True)
+plt.legend()
 plt.tight_layout()
 
 plt.savefig(
@@ -503,56 +568,101 @@ plt.show()
 plt.close()
 
 
-print("\nK-Means evaluation completed successfully.")
+# ============================================================
+# Plot cluster-size balance
+# ============================================================
 
-print("\nSaved results:")
-print(
-    os.path.join(
-        RESULTS_DIR,
-        "kmeans_evaluation_metrics.csv"
-    )
+plt.figure(figsize=(8, 5))
+
+plt.plot(
+    results["k"],
+    results["Smallest Cluster"],
+    marker="o",
+    label="Smallest cluster"
 )
 
-print("\nSaved figures:")
-print(
+plt.plot(
+    results["k"],
+    results["Largest Cluster"],
+    marker="o",
+    label="Largest cluster"
+)
+
+plt.axvline(
+    FINAL_K,
+    linestyle="--",
+    label=f"Selected k = {FINAL_K}"
+)
+
+plt.title(
+    "K-Means Cluster-Size Balance"
+)
+
+plt.xlabel(
+    "Number of Clusters (k)"
+)
+
+plt.ylabel(
+    "Number of Companies"
+)
+
+plt.xticks(
+    results["k"]
+)
+
+plt.grid(True)
+plt.legend()
+plt.tight_layout()
+
+plt.savefig(
     os.path.join(
         FIGURES_DIR,
-        "kmeans_elbow_method.png"
-    )
+        "kmeans_cluster_size_balance.png"
+    ),
+    dpi=300,
+    bbox_inches="tight"
 )
-print(
-    os.path.join(
-        FIGURES_DIR,
-        "kmeans_silhouette_score.png"
-    )
-)
-print(
-    os.path.join(
-        FIGURES_DIR,
-        "kmeans_davies_bouldin_index.png"
-    )
-)
-print(
-    os.path.join(
-        FIGURES_DIR,
-        "kmeans_calinski_harabasz_index.png"
-    )
-)
+
+plt.show()
+plt.close()
+
 
 # ============================================================
 # Inspect candidate K-Means solutions
 # ============================================================
 
-candidate_k_values = [2, 3, 4]
+candidate_k_values = sorted(
+    set(
+        [
+            2,
+            3,
+            4,
+            best_silhouette_k,
+            best_davies_bouldin_k,
+            best_calinski_harabasz_k,
+            FINAL_K
+        ]
+    )
+)
+
+candidate_k_values = [
+    k
+    for k in candidate_k_values
+    if 2 <= k <= maximum_k
+]
+
+print("\nCandidate values of k:")
+print(candidate_k_values)
 
 all_cluster_assignments = []
+candidate_summary_rows = []
 
 for k in candidate_k_values:
 
     model = KMeans(
         n_clusters=k,
-        random_state=42,
-        n_init=20
+        random_state=RANDOM_STATE,
+        n_init=N_INIT
     )
 
     labels = model.fit_predict(X)
@@ -566,9 +676,11 @@ for k in candidate_k_values:
         by=["Cluster", "Ticker"]
     )
 
-    cluster_sizes = assignments[
-        "Cluster"
-    ].value_counts().sort_index()
+    cluster_sizes = (
+        assignments["Cluster"]
+        .value_counts()
+        .sort_index()
+    )
 
     print("\n" + "=" * 60)
     print(f"K-MEANS RESULTS FOR k = {k}")
@@ -580,6 +692,7 @@ for k in candidate_k_values:
     for cluster_number in sorted(
         assignments["Cluster"].unique()
     ):
+
         members = assignments.loc[
             assignments["Cluster"] == cluster_number,
             "Ticker"
@@ -589,10 +702,29 @@ for k in candidate_k_values:
             f"\nCluster {cluster_number} "
             f"({len(members)} companies):"
         )
-        print(", ".join(members))
+
+        print(
+            ", ".join(members)
+        )
+
+    candidate_summary_rows.append({
+        "k": k,
+        "Smallest Cluster": int(
+            cluster_sizes.min()
+        ),
+        "Largest Cluster": int(
+            cluster_sizes.max()
+        ),
+        "Singleton Clusters": int(
+            (cluster_sizes == 1).sum()
+        )
+    })
 
     assignments["k"] = k
-    all_cluster_assignments.append(assignments)
+
+    all_cluster_assignments.append(
+        assignments
+    )
 
     assignments.to_csv(
         os.path.join(
@@ -601,6 +733,11 @@ for k in candidate_k_values:
         ),
         index=False
     )
+
+
+# ============================================================
+# Save combined candidate assignments
+# ============================================================
 
 combined_assignments = pd.concat(
     all_cluster_assignments,
@@ -614,3 +751,47 @@ combined_assignments.to_csv(
     ),
     index=False
 )
+
+candidate_summary = pd.DataFrame(
+    candidate_summary_rows
+)
+
+candidate_summary.to_csv(
+    os.path.join(
+        RESULTS_DIR,
+        "kmeans_candidate_cluster_summary.csv"
+    ),
+    index=False
+)
+
+# ============================================================
+# Final summary
+# ============================================================
+
+print("\n" + "=" * 60)
+print("K-MEANS EVALUATION SUMMARY")
+print("=" * 60)
+
+print(f"Companies analysed: {X.shape[0]}")
+print(f"Trading days analysed: {X.shape[1]}")
+print(f"k values evaluated: {min(k_values)} to {max(k_values)}")
+
+print(f"Highest Silhouette Score: k = {best_silhouette_k}")
+print(f"Lowest Davies-Bouldin Index: k = {best_davies_bouldin_k}")
+print(f"Highest Calinski-Harabasz Index: k = {best_calinski_harabasz_k}")
+print(f"Interpretation-selected candidate k: {FINAL_K}")
+
+print("\nSaved result files:")
+print(os.path.join(RESULTS_DIR, "kmeans_evaluation_metrics.csv"))
+print(os.path.join(RESULTS_DIR, "kmeans_k_selection_summary.csv"))
+print(os.path.join(RESULTS_DIR, "kmeans_candidate_cluster_assignments.csv"))
+print(os.path.join(RESULTS_DIR, "kmeans_candidate_cluster_summary.csv"))
+
+print("\nSaved figures:")
+print(os.path.join(FIGURES_DIR, "kmeans_elbow_method.png"))
+print(os.path.join(FIGURES_DIR, "kmeans_silhouette_score.png"))
+print(os.path.join(FIGURES_DIR, "kmeans_davies_bouldin_index.png"))
+print(os.path.join(FIGURES_DIR, "kmeans_calinski_harabasz_index.png"))
+print(os.path.join(FIGURES_DIR, "kmeans_cluster_size_balance.png"))
+
+print("\nK-Means evaluation completed successfully.")

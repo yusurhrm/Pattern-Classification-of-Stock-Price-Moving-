@@ -20,24 +20,20 @@ from sklearn.metrics import (
 # Configuration
 # ============================================================
 
-DATA_PATH = "data/raw/ftse100_40_companies.csv"
+# Cleaned normalised dataset produced from the FTSE 100 download.
+# It contains the 98 companies retained after excluding the two
+# companies with excessive missing data.
+DATA_PATH = "data/processed/normalised_prices.csv"
 
 RESULTS_DIR = "results/hierarchical_final"
-FIGURES_DIR = "figures/hierarchical_final"
+FIGURES_DIR = "results/figures/hierarchical_final"
 
-LINKAGE_METHOD = "complete"
+LINKAGE_METHOD = "ward"
 DISTANCE_METRIC = "euclidean"
 N_CLUSTERS = 3
 
-os.makedirs(
-    RESULTS_DIR,
-    exist_ok=True,
-)
-
-os.makedirs(
-    FIGURES_DIR,
-    exist_ok=True,
-)
+os.makedirs(RESULTS_DIR, exist_ok=True)
+os.makedirs(FIGURES_DIR, exist_ok=True)
 
 
 # ============================================================
@@ -71,242 +67,79 @@ NORMALISED_PRICES_OUTPUT_PATH = os.path.join(
 
 DENDROGRAM_OUTPUT_PATH = os.path.join(
     FIGURES_DIR,
-    "hierarchical_complete_linkage_dendrogram_k3.png",
+    "hierarchical_ward_linkage_dendrogram_k3.png",
 )
 
 
 # ============================================================
-# Load the original stock-price dataset
+# Load cleaned normalised stock-price data
 # ============================================================
 
-data = pd.read_csv(
+normalised_prices = pd.read_csv(
     DATA_PATH,
-    header=[0, 1],
     index_col=0,
     parse_dates=True,
 )
 
-print("\n" + "=" * 80)
-print("ORIGINAL DATASET")
-print("=" * 80)
-
-print(f"Dataset shape: {data.shape}")
-print(f"Column level names: {data.columns.names}")
-
-
-# ============================================================
-# Extract adjusted closing prices
-# ============================================================
-
-try:
-    prices = data.xs(
-        "Adj Close",
-        level="Price",
-        axis=1,
-    )
-
-except (KeyError, ValueError):
-    # Fallback if the first column level does not have
-    # the name "Price"
-    prices = data.xs(
-        "Adj Close",
-        level=0,
-        axis=1,
-    )
-
-prices = prices.apply(
-    pd.to_numeric,
-    errors="coerce",
-)
-
-prices = prices.sort_index()
-
-# Remove duplicated dates if any are present
-prices = prices.loc[
-    ~prices.index.duplicated(
-        keep="first"
-    )
-]
-
-# Remove duplicated ticker columns if any are present
-prices = prices.loc[
-    :,
-    ~prices.columns.duplicated(
-        keep="first"
-    ),
-]
+normalised_prices = normalised_prices.sort_index()
+normalised_prices = normalised_prices.sort_index(axis=1)
 
 print("\n" + "=" * 80)
-print("ADJUSTED CLOSING PRICES")
+print("CLEANED NORMALISED DATASET")
 print("=" * 80)
 
-print(f"Price-data shape: {prices.shape}")
-
-print("\nCompanies included:")
-
-for ticker in prices.columns:
-    print(ticker)
-
-
-# ============================================================
-# Validate the number of companies
-# ============================================================
-
-if prices.shape[1] != 40:
-    print(
-        "\nWarning: The dataset contains "
-        f"{prices.shape[1]} companies rather than 40."
-    )
-
-
-# ============================================================
-# Examine missing values
-# ============================================================
-
-missing_before = (
-    prices
-    .isna()
-    .sum()
+print(f"Dataset shape: {normalised_prices.shape}")
+print(
+    f"Date range: {normalised_prices.index.min()} "
+    f"to {normalised_prices.index.max()}"
 )
+print(f"Number of companies: {normalised_prices.shape[1]}")
+print(f"Number of trading days: {normalised_prices.shape[0]}")
 
-missing_before = missing_before[
-    missing_before > 0
-].sort_values(
-    ascending=False
-)
+if normalised_prices.empty:
+    raise ValueError("The normalised-price dataset is empty.")
 
-print("\n" + "=" * 80)
-print("MISSING VALUES BEFORE PREPROCESSING")
-print("=" * 80)
+missing_values = int(normalised_prices.isna().sum().sum())
 
-if missing_before.empty:
-    print("No missing values were found.")
-
-else:
-    print(missing_before.to_string())
-
-
-# ============================================================
-# Handle missing observations
-# ============================================================
-
-# Forward filling uses the most recent available trading price.
-# Backward filling handles any missing values at the beginning
-# of the observation period.
-prices = prices.ffill().bfill()
-
-# Replace infinite values with missing values
-prices = prices.replace(
-    [np.inf, -np.inf],
-    np.nan,
-)
-
-remaining_missing = (
-    prices
-    .isna()
-    .sum()
-)
-
-remaining_missing = remaining_missing[
-    remaining_missing > 0
-]
-
-if not remaining_missing.empty:
-    raise ValueError(
-        "Missing values remain after preprocessing:\n"
-        f"{remaining_missing.to_string()}"
-    )
-
-print("\nAll missing values were resolved.")
-
-
-# ============================================================
-# Validate the starting values
-# ============================================================
-
-invalid_starting_values = prices.columns[
-    (
-        prices.iloc[0].isna()
-        | (prices.iloc[0] == 0)
-        | ~np.isfinite(prices.iloc[0])
-    )
-].tolist()
-
-if invalid_starting_values:
-    raise ValueError(
-        "The following companies have invalid starting "
-        "prices and cannot be normalised:\n"
-        f"{invalid_starting_values}"
-    )
-
-
-# ============================================================
-# Normalise prices
-# ============================================================
-
-# Each stock begins at a value of 1.0.
-normalised_prices = prices.div(
-    prices.iloc[0],
-    axis="columns",
-)
-
-normalised_prices = normalised_prices.replace(
-    [np.inf, -np.inf],
-    np.nan,
-)
-
-if normalised_prices.isna().any().any():
-    invalid_columns = normalised_prices.columns[
+if missing_values > 0:
+    companies_with_missing = normalised_prices.columns[
         normalised_prices.isna().any()
     ].tolist()
 
     raise ValueError(
-        "Invalid values were produced during normalisation "
-        f"for: {invalid_columns}"
+        "Missing values were found for: "
+        + ", ".join(companies_with_missing)
     )
 
-normalised_prices.to_csv(
-    NORMALISED_PRICES_OUTPUT_PATH,
-)
+if not np.isfinite(normalised_prices.to_numpy()).all():
+    raise ValueError(
+        "The normalised dataset contains infinite or invalid values."
+    )
 
-print("\n" + "=" * 80)
-print("NORMALISED PRICE DATA")
-print("=" * 80)
+constant_companies = normalised_prices.columns[
+    normalised_prices.nunique() <= 1
+].tolist()
 
-print(
-    f"Normalised-data shape: "
-    f"{normalised_prices.shape}"
-)
+if constant_companies:
+    raise ValueError(
+        "Constant price series were found for: "
+        + ", ".join(constant_companies)
+    )
 
-print(
-    "All companies begin at approximately 1.0: "
-    f"{np.allclose(normalised_prices.iloc[0], 1.0)}"
-)
+normalised_prices.to_csv(NORMALISED_PRICES_OUTPUT_PATH)
 
-
-# ============================================================
-# Prepare the clustering matrix
-# ============================================================
-
-# Hierarchical clustering expects observations as rows.
-# Therefore:
-#     rows = companies
-#     columns = trading dates
+# Rows = companies; columns = trading dates
 X = normalised_prices.T
-
 ticker_names = X.index.astype(str).tolist()
 
 print("\n" + "=" * 80)
 print("CLUSTERING MATRIX")
 print("=" * 80)
-
 print(f"Matrix shape: {X.shape}")
-
 print(
     f"{X.shape[0]} companies are represented using "
     f"{X.shape[1]} trading-day observations."
 )
-
 
 # ============================================================
 # Validate the clustering matrix
@@ -637,7 +470,7 @@ if cut_height is not None:
     )
 
 plt.title(
-    "Complete-Linkage Hierarchical Clustering "
+    "Ward-Linkage Hierarchical Clustering "
     "of Normalised Stock-Price Trajectories"
 )
 
@@ -878,7 +711,1425 @@ plt.ylabel(
 )
 
 plt.title(
-    "PCA Visualisation of Complete-Linkage "
+    "PCA Visualisation of Ward-Linkage "
+    "Hierarchical Clusters"
+)
+
+plt.legend()
+plt.grid(alpha=0.25)
+plt.tight_layout()
+
+plt.savefig(
+    PCA_FIGURE_OUTPUT_PATH,
+    dpi=300,
+    bbox_inches="tight",
+)
+
+plt.show()
+plt.close()
+
+
+# ============================================================
+# Calculate cluster mean trajectories
+# ============================================================
+
+cluster_mean_trajectories = pd.DataFrame(
+    index=normalised_prices.index
+)
+
+for cluster_number in sorted(
+    cluster_assignments["Cluster"].unique()
+):
+
+    cluster_tickers = (
+        cluster_assignments.loc[
+            cluster_assignments["Cluster"]
+            == cluster_number,
+            "Ticker",
+        ]
+        .tolist()
+    )
+
+    cluster_mean_trajectories[
+        f"Cluster {cluster_number}"
+    ] = (
+        normalised_prices[
+            cluster_tickers
+        ]
+        .mean(axis=1)
+    )
+
+cluster_mean_trajectories.to_csv(
+    CLUSTER_MEANS_OUTPUT_PATH
+)
+
+
+# ============================================================
+# Plot mean cluster trajectories
+# ============================================================
+
+plt.figure(
+    figsize=(13, 7)
+)
+
+for cluster_number in sorted(
+    cluster_assignments["Cluster"].unique()
+):
+
+    cluster_size = int(
+        cluster_sizes.loc[
+            cluster_sizes["Cluster"]
+            == cluster_number,
+            "Company Count",
+        ].iloc[0]
+    )
+
+    column_name = (
+        f"Cluster {cluster_number}"
+    )
+
+    plt.plot(
+        cluster_mean_trajectories.index,
+        cluster_mean_trajectories[
+            column_name
+        ],
+        linewidth=2.5,
+        label=(
+            f"Cluster {cluster_number} "
+            f"(n={cluster_size})"
+        ),
+    )
+
+plt.axhline(
+    y=1.0,
+    linestyle="--",
+    linewidth=1,
+    alpha=0.6,
+)
+
+plt.xlabel("Date")
+plt.ylabel("Mean normalised adjusted closing price")
+
+plt.title(
+    "Average Normalised Price Trajectory "
+    "of Each Hierarchical Cluster"
+)
+
+plt.legend()
+plt.grid(alpha=0.25)
+plt.tight_layout()
+
+plt.savefig(
+    MEAN_TRAJECTORIES_OUTPUT_PATH,
+    dpi=300,
+    bbox_inches="tight",
+)
+
+plt.show()
+plt.close()
+
+
+# ============================================================
+# Plot individual trajectories in separate figures
+# ============================================================
+
+for cluster_number in sorted(
+    cluster_assignments["Cluster"].unique()
+):
+
+    cluster_tickers = (
+        cluster_assignments.loc[
+            cluster_assignments["Cluster"]
+            == cluster_number,
+            "Ticker",
+        ]
+        .tolist()
+    )
+
+    cluster_mean = (
+        normalised_prices[
+            cluster_tickers
+        ]
+        .mean(axis=1)
+    )
+
+    plt.figure(
+        figsize=(13, 7)
+    )
+
+    for ticker in cluster_tickers:
+
+        plt.plot(
+            normalised_prices.index,
+            normalised_prices[ticker],
+            alpha=0.25,
+            linewidth=0.9,
+        )
+
+    plt.plot(
+        cluster_mean.index,
+        cluster_mean,
+        linewidth=4,
+        label="Cluster mean",
+    )
+
+    plt.axhline(
+        y=1.0,
+        linestyle="--",
+        linewidth=1,
+        alpha=0.6,
+    )
+
+    plt.xlabel("Date")
+    plt.ylabel("Normalised adjusted closing price")
+
+    plt.title(
+        f"Hierarchical Cluster {cluster_number}: "
+        f"Individual Price Trajectories "
+        f"(n={len(cluster_tickers)})"
+    )
+
+    plt.legend()
+    plt.grid(alpha=0.2)
+    plt.tight_layout()
+
+    individual_output_path = os.path.join(
+        FIGURES_DIR,
+        (
+            "hierarchical_cluster_"
+            f"{cluster_number}_individual_trajectories.png"
+        ),
+    )
+
+    plt.savefig(
+        individual_output_path,
+        dpi=300,
+        bbox_inches="tight",
+    )
+
+    plt.show()
+    plt.close()
+
+
+# ============================================================
+# Plot all cluster trajectories in one combined figure
+# ============================================================
+
+number_of_clusters = len(
+    cluster_assignments["Cluster"].unique()
+)
+
+fig, axes = plt.subplots(
+    number_of_clusters,
+    1,
+    figsize=(
+        14,
+        5 * number_of_clusters,
+    ),
+    sharex=True,
+)
+
+if number_of_clusters == 1:
+    axes = [axes]
+
+for axis, cluster_number in zip(
+    axes,
+    sorted(
+        cluster_assignments["Cluster"].unique()
+    ),
+):
+
+    cluster_tickers = (
+        cluster_assignments.loc[
+            cluster_assignments["Cluster"]
+            == cluster_number,
+            "Ticker",
+        ]
+        .tolist()
+    )
+
+    cluster_mean = (
+        normalised_prices[
+            cluster_tickers
+        ]
+        .mean(axis=1)
+    )
+
+    for ticker in cluster_tickers:
+
+        axis.plot(
+            normalised_prices.index,
+            normalised_prices[ticker],
+            alpha=0.22,
+            linewidth=0.8,
+        )
+
+    axis.plot(
+        cluster_mean.index,
+        cluster_mean,
+        linewidth=4,
+        label="Cluster mean",
+    )
+
+    axis.axhline(
+        y=1.0,
+        linestyle="--",
+        linewidth=1,
+        alpha=0.6,
+    )
+
+    axis.set_ylabel(
+        "Normalised price"
+    )
+
+    axis.set_title(
+        f"Cluster {cluster_number} "
+        f"(n={len(cluster_tickers)})"
+    )
+
+    axis.grid(alpha=0.2)
+    axis.legend()
+
+axes[-1].set_xlabel("Date")
+
+fig.suptitle(
+    "Individual Normalised Price Trajectories "
+    "Within Hierarchical Clusters",
+    fontsize=16,
+)
+
+plt.tight_layout(
+    rect=[
+        0,
+        0,
+        1,
+        0.97,
+    ]
+)
+
+plt.savefig(
+    INDIVIDUAL_TRAJECTORIES_COMBINED_PATH,
+    dpi=300,
+    bbox_inches="tight",
+)
+
+plt.show()
+plt.close()
+
+
+# ============================================================
+# Print final normalised values of cluster means
+# ============================================================
+
+print("\n" + "=" * 80)
+print("FINAL VALUES OF CLUSTER MEAN TRAJECTORIES")
+print("=" * 80)
+
+for column_name in (
+    cluster_mean_trajectories.columns
+):
+
+    final_value = (
+        cluster_mean_trajectories[
+            column_name
+        ]
+        .iloc[-1]
+    )
+
+    print(
+        f"{column_name}: "
+        f"{final_value:.4f}"
+    )
+
+
+# ============================================================
+# Part 2 completion report
+# ============================================================
+
+print("\n" + "=" * 80)
+print("PART 2 COMPLETED")
+print("=" * 80)
+
+print("\nSaved PCA coordinates:")
+print(PCA_COORDINATES_OUTPUT_PATH)
+
+print("\nSaved cluster mean trajectories:")
+print(CLUSTER_MEANS_OUTPUT_PATH)
+
+print("\nSaved PCA figure:")
+print(PCA_FIGURE_OUTPUT_PATH)
+
+print("\nSaved mean trajectory figure:")
+print(MEAN_TRAJECTORIES_OUTPUT_PATH)
+
+print("\nSaved combined individual trajectory figure:")
+print(INDIVIDUAL_TRAJECTORIES_COMBINED_PATH)
+
+# ============================================================
+# PART 3
+# COMPARE HIERARCHICAL AND K-MEANS CLUSTER ASSIGNMENTS
+# ============================================================
+
+
+# ============================================================
+# File paths
+# ============================================================
+
+KMEANS_CLUSTERS_PATH = (
+    "results/kmeans_final_clusters.csv"
+)
+
+COMPARISON_OUTPUT_PATH = os.path.join(
+    RESULTS_DIR,
+    "kmeans_hierarchical_assignment_comparison.csv",
+)
+
+CONTINGENCY_TABLE_OUTPUT_PATH = os.path.join(
+    RESULTS_DIR,
+    "kmeans_hierarchical_contingency_table.csv",
+)
+
+
+# ============================================================
+# Load K-Means assignments
+# ============================================================
+
+kmeans_assignments = pd.read_csv(
+    KMEANS_CLUSTERS_PATH
+)
+
+required_kmeans_columns = {
+    "Ticker",
+    "Cluster",
+}
+
+if not required_kmeans_columns.issubset(
+    kmeans_assignments.columns
+):
+    raise ValueError(
+        "The K-Means assignment file must contain "
+        "'Ticker' and 'Cluster' columns."
+    )
+
+kmeans_assignments = (
+    kmeans_assignments[
+        [
+            "Ticker",
+            "Cluster",
+        ]
+    ]
+    .copy()
+)
+
+kmeans_assignments["Ticker"] = (
+    kmeans_assignments["Ticker"]
+    .astype(str)
+    .str.strip()
+)
+
+kmeans_assignments["Cluster"] = (
+    pd.to_numeric(
+        kmeans_assignments["Cluster"],
+        errors="raise",
+    )
+    .astype(int)
+)
+
+kmeans_assignments = (
+    kmeans_assignments.rename(
+        columns={
+            "Cluster": "K-Means Cluster",
+        }
+    )
+)
+
+
+# ============================================================
+# Prepare hierarchical assignments
+# ============================================================
+
+hierarchical_comparison = (
+    cluster_assignments[
+        [
+            "Ticker",
+            "Cluster",
+        ]
+    ]
+    .copy()
+)
+
+hierarchical_comparison = (
+    hierarchical_comparison.rename(
+        columns={
+            "Cluster": "Hierarchical Cluster",
+        }
+    )
+)
+
+
+# ============================================================
+# Merge assignments
+# ============================================================
+
+assignment_comparison = (
+    kmeans_assignments.merge(
+        hierarchical_comparison,
+        on="Ticker",
+        how="outer",
+        validate="one_to_one",
+        indicator=True,
+    )
+)
+
+unmatched_rows = assignment_comparison.loc[
+    assignment_comparison["_merge"]
+    != "both"
+]
+
+if not unmatched_rows.empty:
+    raise ValueError(
+        "Some tickers were not found in both assignment files:\n"
+        f"{unmatched_rows.to_string(index=False)}"
+    )
+
+assignment_comparison = (
+    assignment_comparison.drop(
+        columns="_merge"
+    )
+)
+
+
+# ============================================================
+# Create contingency table
+# ============================================================
+
+contingency_table = pd.crosstab(
+    assignment_comparison[
+        "K-Means Cluster"
+    ],
+    assignment_comparison[
+        "Hierarchical Cluster"
+    ],
+)
+
+contingency_table.index.name = (
+    "K-Means Cluster"
+)
+
+contingency_table.columns.name = (
+    "Hierarchical Cluster"
+)
+
+contingency_table.to_csv(
+    CONTINGENCY_TABLE_OUTPUT_PATH
+)
+
+
+# ============================================================
+# Infer equivalent cluster labels
+# ============================================================
+
+hierarchical_to_kmeans_map = {}
+
+for hierarchical_cluster in sorted(
+    assignment_comparison[
+        "Hierarchical Cluster"
+    ].unique()
+):
+
+    current_rows = assignment_comparison.loc[
+        assignment_comparison[
+            "Hierarchical Cluster"
+        ]
+        == hierarchical_cluster
+    ]
+
+    matching_counts = (
+        current_rows[
+            "K-Means Cluster"
+        ]
+        .value_counts()
+    )
+
+    most_common_kmeans_cluster = int(
+        matching_counts.idxmax()
+    )
+
+    hierarchical_to_kmeans_map[
+        hierarchical_cluster
+    ] = most_common_kmeans_cluster
+
+
+assignment_comparison[
+    "Mapped Hierarchical Cluster"
+] = (
+    assignment_comparison[
+        "Hierarchical Cluster"
+    ]
+    .map(
+        hierarchical_to_kmeans_map
+    )
+)
+
+
+# ============================================================
+# Determine assignment agreement
+# ============================================================
+
+assignment_comparison[
+    "Same Pattern Assignment"
+] = (
+    assignment_comparison[
+        "K-Means Cluster"
+    ]
+    == assignment_comparison[
+        "Mapped Hierarchical Cluster"
+    ]
+)
+
+agreement_count = int(
+    assignment_comparison[
+        "Same Pattern Assignment"
+    ].sum()
+)
+
+total_companies = len(
+    assignment_comparison
+)
+
+agreement_percentage = (
+    agreement_count
+    / total_companies
+    * 100
+)
+
+assignment_comparison = (
+    assignment_comparison.sort_values(
+        by=[
+            "K-Means Cluster",
+            "Ticker",
+        ]
+    )
+    .reset_index(
+        drop=True
+    )
+)
+
+assignment_comparison.to_csv(
+    COMPARISON_OUTPUT_PATH,
+    index=False,
+)
+
+
+# ============================================================
+# Print comparison results
+# ============================================================
+
+print("\n" + "=" * 80)
+print("K-MEANS AND HIERARCHICAL CLUSTER COMPARISON")
+print("=" * 80)
+
+print("\nContingency table:")
+
+print(
+    contingency_table.to_string()
+)
+
+print(
+    "\nHierarchical-to-K-Means label mapping:"
+)
+
+for (
+    hierarchical_cluster,
+    kmeans_cluster,
+) in hierarchical_to_kmeans_map.items():
+
+    print(
+        f"Hierarchical Cluster "
+        f"{hierarchical_cluster} "
+        f"corresponds to K-Means Cluster "
+        f"{kmeans_cluster}"
+    )
+
+print(
+    f"\nMatching pattern assignments: "
+    f"{agreement_count}/{total_companies}"
+)
+
+print(
+    f"Agreement percentage: "
+    f"{agreement_percentage:.2f}%"
+)
+
+
+# ============================================================
+# Print disagreements, if any
+# ============================================================
+
+disagreements = assignment_comparison.loc[
+    ~assignment_comparison[
+        "Same Pattern Assignment"
+    ]
+]
+
+if disagreements.empty:
+
+    print(
+        "\nThe two algorithms assigned every company "
+        "to the same movement pattern after aligning "
+        "the arbitrary cluster labels."
+    )
+
+else:
+
+    print(
+        "\nCompanies assigned differently:"
+    )
+
+    print(
+        disagreements[
+            [
+                "Ticker",
+                "K-Means Cluster",
+                "Hierarchical Cluster",
+                "Mapped Hierarchical Cluster",
+            ]
+        ].to_string(
+            index=False
+        )
+    )
+
+
+# ============================================================
+# Final completion report
+# ============================================================
+
+print("\n" + "=" * 80)
+print("FINAL HIERARCHICAL ANALYSIS COMPLETED")
+print("=" * 80)
+
+print("\nSaved assignment comparison:")
+print(COMPARISON_OUTPUT_PATH)
+
+print("\nSaved contingency table:")
+print(CONTINGENCY_TABLE_OUTPUT_PATH)
+hierarchical_final_98_companies.py
+
+
+import os
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from scipy.cluster.hierarchy import (
+    dendrogram,
+    fcluster,
+    linkage,
+)
+from sklearn.decomposition import PCA
+from sklearn.metrics import (
+    calinski_harabasz_score,
+    davies_bouldin_score,
+    silhouette_score,
+)
+
+
+# ============================================================
+# Configuration
+# ============================================================
+
+# Cleaned normalised dataset produced from the FTSE 100 download.
+# It contains the 98 companies retained after excluding the two
+# companies with excessive missing data.
+DATA_PATH = "data/processed/normalised_prices.csv"
+
+RESULTS_DIR = "results/hierarchical_final"
+FIGURES_DIR = "results/figures/hierarchical_final"
+
+LINKAGE_METHOD = "ward"
+DISTANCE_METRIC = "euclidean"
+N_CLUSTERS = 3
+
+os.makedirs(RESULTS_DIR, exist_ok=True)
+os.makedirs(FIGURES_DIR, exist_ok=True)
+
+
+# ============================================================
+# Output file paths
+# ============================================================
+
+CLUSTERS_OUTPUT_PATH = os.path.join(
+    RESULTS_DIR,
+    "hierarchical_clusters_k3.csv",
+)
+
+CLUSTER_SIZES_OUTPUT_PATH = os.path.join(
+    RESULTS_DIR,
+    "hierarchical_cluster_sizes_k3.csv",
+)
+
+METRICS_OUTPUT_PATH = os.path.join(
+    RESULTS_DIR,
+    "hierarchical_final_metrics.csv",
+)
+
+LINKAGE_MATRIX_OUTPUT_PATH = os.path.join(
+    RESULTS_DIR,
+    "hierarchical_linkage_matrix.csv",
+)
+
+NORMALISED_PRICES_OUTPUT_PATH = os.path.join(
+    RESULTS_DIR,
+    "hierarchical_normalised_prices.csv",
+)
+
+DENDROGRAM_OUTPUT_PATH = os.path.join(
+    FIGURES_DIR,
+    "hierarchical_ward_linkage_dendrogram_k3.png",
+)
+
+
+# ============================================================
+# Load cleaned normalised stock-price data
+# ============================================================
+
+normalised_prices = pd.read_csv(
+    DATA_PATH,
+    index_col=0,
+    parse_dates=True,
+)
+
+normalised_prices = normalised_prices.sort_index()
+normalised_prices = normalised_prices.sort_index(axis=1)
+
+print("\n" + "=" * 80)
+print("CLEANED NORMALISED DATASET")
+print("=" * 80)
+
+print(f"Dataset shape: {normalised_prices.shape}")
+print(
+    f"Date range: {normalised_prices.index.min()} "
+    f"to {normalised_prices.index.max()}"
+)
+print(f"Number of companies: {normalised_prices.shape[1]}")
+print(f"Number of trading days: {normalised_prices.shape[0]}")
+
+if normalised_prices.empty:
+    raise ValueError("The normalised-price dataset is empty.")
+
+missing_values = int(normalised_prices.isna().sum().sum())
+
+if missing_values > 0:
+    companies_with_missing = normalised_prices.columns[
+        normalised_prices.isna().any()
+    ].tolist()
+
+    raise ValueError(
+        "Missing values were found for: "
+        + ", ".join(companies_with_missing)
+    )
+
+if not np.isfinite(normalised_prices.to_numpy()).all():
+    raise ValueError(
+        "The normalised dataset contains infinite or invalid values."
+    )
+
+constant_companies = normalised_prices.columns[
+    normalised_prices.nunique() <= 1
+].tolist()
+
+if constant_companies:
+    raise ValueError(
+        "Constant price series were found for: "
+        + ", ".join(constant_companies)
+    )
+
+normalised_prices.to_csv(NORMALISED_PRICES_OUTPUT_PATH)
+
+# Rows = companies; columns = trading dates
+X = normalised_prices.T
+ticker_names = X.index.astype(str).tolist()
+
+print("\n" + "=" * 80)
+print("CLUSTERING MATRIX")
+print("=" * 80)
+print(f"Matrix shape: {X.shape}")
+print(
+    f"{X.shape[0]} companies are represented using "
+    f"{X.shape[1]} trading-day observations."
+)
+
+# ============================================================
+# Validate the clustering matrix
+# ============================================================
+
+if not np.isfinite(X.values).all():
+    raise ValueError(
+        "The clustering matrix contains missing or "
+        "infinite values."
+    )
+
+if X.shape[0] <= N_CLUSTERS:
+    raise ValueError(
+        "The number of companies must be greater than "
+        "the requested number of clusters."
+    )
+
+
+# ============================================================
+# Perform hierarchical clustering
+# ============================================================
+
+linkage_matrix = linkage(
+    X.values,
+    method=LINKAGE_METHOD,
+    metric=DISTANCE_METRIC,
+)
+
+print("\n" + "=" * 80)
+print("HIERARCHICAL CLUSTERING")
+print("=" * 80)
+
+print(f"Linkage method: {LINKAGE_METHOD}")
+print(f"Distance metric: {DISTANCE_METRIC}")
+print(f"Requested clusters: {N_CLUSTERS}")
+print(f"Linkage-matrix shape: {linkage_matrix.shape}")
+
+
+# ============================================================
+# Save the linkage matrix
+# ============================================================
+
+linkage_matrix_df = pd.DataFrame(
+    linkage_matrix,
+    columns=[
+        "Cluster 1",
+        "Cluster 2",
+        "Merge Distance",
+        "Observations in New Cluster",
+    ],
+)
+
+linkage_matrix_df.to_csv(
+    LINKAGE_MATRIX_OUTPUT_PATH,
+    index=False,
+)
+
+
+# ============================================================
+# Extract the final cluster labels
+# ============================================================
+
+cluster_labels = fcluster(
+    linkage_matrix,
+    t=N_CLUSTERS,
+    criterion="maxclust",
+)
+
+actual_number_of_clusters = len(
+    np.unique(cluster_labels)
+)
+
+if actual_number_of_clusters != N_CLUSTERS:
+    print(
+        "\nWarning: "
+        f"{N_CLUSTERS} clusters were requested, but "
+        f"{actual_number_of_clusters} clusters were produced."
+    )
+
+
+# ============================================================
+# Create the cluster-assignment table
+# ============================================================
+
+cluster_assignments = pd.DataFrame(
+    {
+        "Ticker": ticker_names,
+        "Cluster": cluster_labels,
+    }
+)
+
+cluster_assignments = cluster_assignments.sort_values(
+    by=[
+        "Cluster",
+        "Ticker",
+    ]
+).reset_index(
+    drop=True
+)
+
+cluster_assignments.to_csv(
+    CLUSTERS_OUTPUT_PATH,
+    index=False,
+)
+
+
+# ============================================================
+# Calculate cluster sizes
+# ============================================================
+
+cluster_sizes = (
+    cluster_assignments
+    .groupby(
+        "Cluster"
+    )
+    .size()
+    .reset_index(
+        name="Company Count"
+    )
+)
+
+cluster_sizes.to_csv(
+    CLUSTER_SIZES_OUTPUT_PATH,
+    index=False,
+)
+
+
+# ============================================================
+# Print cluster memberships
+# ============================================================
+
+print("\n" + "=" * 80)
+print("FINAL CLUSTER MEMBERSHIPS")
+print("=" * 80)
+
+for cluster_number in sorted(
+    cluster_assignments["Cluster"].unique()
+):
+    members = (
+        cluster_assignments.loc[
+            cluster_assignments["Cluster"]
+            == cluster_number,
+            "Ticker",
+        ]
+        .sort_values()
+        .tolist()
+    )
+
+    print(
+        f"\nCluster {cluster_number} "
+        f"({len(members)} companies):"
+    )
+
+    print(
+        ", ".join(members)
+    )
+
+
+# ============================================================
+# Identify singleton clusters
+# ============================================================
+
+singleton_clusters = cluster_sizes.loc[
+    cluster_sizes["Company Count"] == 1
+]
+
+number_of_singletons = len(
+    singleton_clusters
+)
+
+print("\n" + "=" * 80)
+print("CLUSTER SIZE SUMMARY")
+print("=" * 80)
+
+print(
+    cluster_sizes.to_string(
+        index=False
+    )
+)
+
+print(
+    f"\nNumber of singleton clusters: "
+    f"{number_of_singletons}"
+)
+
+if number_of_singletons > 0:
+    for cluster_number in singleton_clusters[
+        "Cluster"
+    ]:
+        singleton_company = (
+            cluster_assignments.loc[
+                cluster_assignments["Cluster"]
+                == cluster_number,
+                "Ticker",
+            ]
+            .iloc[0]
+        )
+
+        print(
+            f"Cluster {cluster_number} singleton: "
+            f"{singleton_company}"
+        )
+
+
+# ============================================================
+# Calculate internal validation metrics
+# ============================================================
+
+silhouette = silhouette_score(
+    X.values,
+    cluster_labels,
+    metric=DISTANCE_METRIC,
+)
+
+davies_bouldin = davies_bouldin_score(
+    X.values,
+    cluster_labels,
+)
+
+calinski_harabasz = calinski_harabasz_score(
+    X.values,
+    cluster_labels,
+)
+
+metrics_df = pd.DataFrame(
+    [
+        {
+            "Linkage Method": LINKAGE_METHOD,
+            "Distance Metric": DISTANCE_METRIC,
+            "Number of Clusters": actual_number_of_clusters,
+            "Silhouette Score": silhouette,
+            "Davies-Bouldin Index": davies_bouldin,
+            "Calinski-Harabasz Index": calinski_harabasz,
+            "Smallest Cluster": cluster_sizes[
+                "Company Count"
+            ].min(),
+            "Largest Cluster": cluster_sizes[
+                "Company Count"
+            ].max(),
+            "Singleton Clusters": number_of_singletons,
+        }
+    ]
+)
+
+metrics_df.to_csv(
+    METRICS_OUTPUT_PATH,
+    index=False,
+)
+
+print("\n" + "=" * 80)
+print("FINAL VALIDATION METRICS")
+print("=" * 80)
+
+print(
+    metrics_df.to_string(
+        index=False
+    )
+)
+
+
+# ============================================================
+# Calculate the dendrogram cut height
+# ============================================================
+
+# To produce k clusters, the dendrogram is cut between the
+# merge that creates k clusters and the next merge that would
+# reduce the solution to k - 1 clusters.
+
+number_of_observations = X.shape[0]
+
+lower_merge_index = (
+    number_of_observations
+    - N_CLUSTERS
+    - 1
+)
+
+upper_merge_index = (
+    number_of_observations
+    - N_CLUSTERS
+)
+
+if (
+    lower_merge_index >= 0
+    and upper_merge_index < len(linkage_matrix)
+):
+    lower_distance = linkage_matrix[
+        lower_merge_index,
+        2
+    ]
+
+    upper_distance = linkage_matrix[
+        upper_merge_index,
+        2
+    ]
+
+    cut_height = (
+        lower_distance + upper_distance
+    ) / 2
+
+else:
+    cut_height = None
+
+
+# ============================================================
+# Plot the final dendrogram
+# ============================================================
+
+plt.figure(
+    figsize=(18, 9)
+)
+
+dendrogram(
+    linkage_matrix,
+    labels=ticker_names,
+    leaf_rotation=90,
+    leaf_font_size=9,
+    color_threshold=cut_height,
+)
+
+if cut_height is not None:
+    plt.axhline(
+        y=cut_height,
+        linestyle="--",
+        linewidth=2,
+        label=(
+            f"Cut for {N_CLUSTERS} clusters"
+        ),
+    )
+
+plt.title(
+    "Ward-Linkage Hierarchical Clustering "
+    "of Normalised Stock-Price Trajectories"
+)
+
+plt.xlabel("Company")
+plt.ylabel("Euclidean linkage distance")
+
+if cut_height is not None:
+    plt.legend()
+
+plt.tight_layout()
+
+plt.savefig(
+    DENDROGRAM_OUTPUT_PATH,
+    dpi=300,
+    bbox_inches="tight",
+)
+
+plt.show()
+plt.close()
+
+
+# ============================================================
+# Part 1 completion report
+# ============================================================
+
+print("\n" + "=" * 80)
+print("PART 1 COMPLETED")
+print("=" * 80)
+
+print("\nSaved cluster assignments:")
+print(CLUSTERS_OUTPUT_PATH)
+
+print("\nSaved cluster sizes:")
+print(CLUSTER_SIZES_OUTPUT_PATH)
+
+print("\nSaved validation metrics:")
+print(METRICS_OUTPUT_PATH)
+
+print("\nSaved linkage matrix:")
+print(LINKAGE_MATRIX_OUTPUT_PATH)
+
+print("\nSaved normalised prices:")
+print(NORMALISED_PRICES_OUTPUT_PATH)
+
+print("\nSaved dendrogram:")
+print(DENDROGRAM_OUTPUT_PATH)
+
+# ============================================================
+# PART 2
+# PCA VISUALISATION AND CLUSTER TRAJECTORIES
+# ============================================================
+
+
+# ============================================================
+# Output paths for Part 2
+# ============================================================
+
+PCA_COORDINATES_OUTPUT_PATH = os.path.join(
+    RESULTS_DIR,
+    "hierarchical_pca_coordinates.csv",
+)
+
+CLUSTER_MEANS_OUTPUT_PATH = os.path.join(
+    RESULTS_DIR,
+    "hierarchical_cluster_mean_trajectories.csv",
+)
+
+PCA_FIGURE_OUTPUT_PATH = os.path.join(
+    FIGURES_DIR,
+    "hierarchical_pca_clusters_k3.png",
+)
+
+MEAN_TRAJECTORIES_OUTPUT_PATH = os.path.join(
+    FIGURES_DIR,
+    "hierarchical_mean_cluster_trajectories.png",
+)
+
+INDIVIDUAL_TRAJECTORIES_COMBINED_PATH = os.path.join(
+    FIGURES_DIR,
+    "hierarchical_individual_cluster_trajectories.png",
+)
+
+
+# ============================================================
+# Create a ticker-to-cluster mapping
+# ============================================================
+
+ticker_cluster_map = dict(
+    zip(
+        cluster_assignments["Ticker"],
+        cluster_assignments["Cluster"],
+    )
+)
+
+cluster_series = pd.Series(
+    ticker_cluster_map,
+    name="Cluster",
+)
+
+cluster_series = cluster_series.reindex(
+    X.index
+)
+
+if cluster_series.isna().any():
+    missing_cluster_labels = (
+        cluster_series[
+            cluster_series.isna()
+        ]
+        .index
+        .tolist()
+    )
+
+    raise ValueError(
+        "Cluster assignments are missing for: "
+        f"{missing_cluster_labels}"
+    )
+
+cluster_series = cluster_series.astype(int)
+
+
+# ============================================================
+# PCA dimensionality reduction
+# ============================================================
+
+pca = PCA(
+    n_components=2,
+)
+
+pca_coordinates = pca.fit_transform(
+    X.values
+)
+
+explained_variance = (
+    pca.explained_variance_ratio_ * 100
+)
+
+pca_results = pd.DataFrame(
+    {
+        "Ticker": X.index,
+        "Principal Component 1":
+            pca_coordinates[:, 0],
+        "Principal Component 2":
+            pca_coordinates[:, 1],
+        "Cluster":
+            cluster_series.values,
+    }
+)
+
+pca_results = pca_results.sort_values(
+    by=[
+        "Cluster",
+        "Ticker",
+    ]
+)
+
+pca_results.to_csv(
+    PCA_COORDINATES_OUTPUT_PATH,
+    index=False,
+)
+
+print("\n" + "=" * 80)
+print("PCA RESULTS")
+print("=" * 80)
+
+print(
+    "Variance explained by PC1: "
+    f"{explained_variance[0]:.2f}%"
+)
+
+print(
+    "Variance explained by PC2: "
+    f"{explained_variance[1]:.2f}%"
+)
+
+print(
+    "Total variance explained by first two components: "
+    f"{explained_variance.sum():.2f}%"
+)
+
+
+# ============================================================
+# Plot PCA clusters
+# ============================================================
+
+plt.figure(
+    figsize=(11, 8)
+)
+
+for cluster_number in sorted(
+    pca_results["Cluster"].unique()
+):
+
+    cluster_points = pca_results.loc[
+        pca_results["Cluster"]
+        == cluster_number
+    ]
+
+    plt.scatter(
+        cluster_points[
+            "Principal Component 1"
+        ],
+        cluster_points[
+            "Principal Component 2"
+        ],
+        s=100,
+        alpha=0.8,
+        label=(
+            f"Cluster {cluster_number} "
+            f"(n={len(cluster_points)})"
+        ),
+    )
+
+    for _, row in cluster_points.iterrows():
+        plt.annotate(
+            row["Ticker"],
+            (
+                row[
+                    "Principal Component 1"
+                ],
+                row[
+                    "Principal Component 2"
+                ],
+            ),
+            xytext=(5, 5),
+            textcoords="offset points",
+            fontsize=8,
+            alpha=0.8,
+        )
+
+plt.xlabel(
+    "Principal Component 1 "
+    f"({explained_variance[0]:.2f}% variance)"
+)
+
+plt.ylabel(
+    "Principal Component 2 "
+    f"({explained_variance[1]:.2f}% variance)"
+)
+
+plt.title(
+    "PCA Visualisation of Ward-Linkage "
     "Hierarchical Clusters"
 )
 

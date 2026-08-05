@@ -9,44 +9,44 @@ from sklearn.decomposition import PCA
 # Directories
 # ==========================================================
 
-DATA_PATH = "data/raw/ftse100_40_companies.csv"
+DATA_PATH = "data/processed/normalised_prices.csv"
 
-FIGURES_DIR = "figures"
+FIGURES_DIR = "results/figures"
 RESULTS_DIR = "results"
 
 os.makedirs(FIGURES_DIR, exist_ok=True)
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
 # ==========================================================
-# Load data
+# Load cleaned normalised data
 # ==========================================================
 
-data = pd.read_csv(
+normalised_prices = pd.read_csv(
     DATA_PATH,
-    header=[0, 1],
     index_col=0,
     parse_dates=True
 )
 
-prices = data.xs(
-    "Adj Close",
-    level="Price",
-    axis=1
-)
+normalised_prices = normalised_prices.sort_index()
+normalised_prices = normalised_prices.sort_index(axis=1)
 
-prices = prices.ffill().bfill()
+print("=" * 60)
+print("FINAL K-MEANS CLUSTERING")
+print("=" * 60)
 
-# ==========================================================
-# Normalise
-# ==========================================================
-
-normalised_prices = prices / prices.iloc[0]
+print(f"\nDataset shape: {normalised_prices.shape}")
+print(f"Companies: {normalised_prices.shape[1]}")
+print(f"Trading days: {normalised_prices.shape[0]}")
 
 # ==========================================================
-# K-Means
+# Prepare data
 # ==========================================================
 
 X = normalised_prices.T
+
+# ==========================================================
+# Final K-Means (k = 3)
+# ==========================================================
 
 kmeans = KMeans(
     n_clusters=3,
@@ -65,6 +65,7 @@ clusters = clusters.sort_values(
     ["Cluster", "Ticker"]
 )
 
+print("\nFinal cluster assignments:")
 print(clusters)
 
 clusters.to_csv(
@@ -76,7 +77,7 @@ clusters.to_csv(
 )
 
 # ==========================================================
-# PCA
+# PCA visualisation
 # ==========================================================
 
 pca = PCA(n_components=2)
@@ -84,13 +85,13 @@ pca = PCA(n_components=2)
 X_pca = pca.fit_transform(X)
 
 plot_df = pd.DataFrame({
-    "PC1": X_pca[:,0],
-    "PC2": X_pca[:,1],
+    "PC1": X_pca[:, 0],
+    "PC2": X_pca[:, 1],
     "Cluster": labels + 1,
     "Ticker": X.index
 })
 
-plt.figure(figsize=(10,8))
+plt.figure(figsize=(10, 8))
 
 for cluster in sorted(plot_df.Cluster.unique()):
 
@@ -111,10 +112,10 @@ for _, row in plot_df.iterrows():
         row.PC1,
         row.PC2,
         row.Ticker,
-        fontsize=8
+        fontsize=7
     )
 
-plt.title("K-Means Clusters (k=3)")
+plt.title("K-Means Clusters (k = 3, 98 Companies)")
 plt.xlabel("Principal Component 1")
 plt.ylabel("Principal Component 2")
 plt.legend()
@@ -126,10 +127,13 @@ plt.savefig(
         FIGURES_DIR,
         "kmeans_pca.png"
     ),
-    dpi=300
+    dpi=300,
+    bbox_inches="tight"
 )
 
 plt.show()
+
+plt.close()
 
 # ==========================================================
 # Average movement pattern
@@ -152,25 +156,25 @@ for cluster in sorted(clusters.Cluster.unique()):
         tickers
     ].mean(axis=1)
 
-plt.figure(figsize=(12,6))
+plt.figure(figsize=(12, 6))
 
 for column in cluster_profiles.columns:
 
     plt.plot(
         cluster_profiles.index,
         cluster_profiles[column],
-        label=column,
-        linewidth=2
+        linewidth=2,
+        label=column
     )
 
-plt.title("Average Normalised Price Movement by Cluster")
+plt.title(
+    "Average Normalised Price Movement by Cluster (98 Companies)"
+)
 
 plt.xlabel("Year")
-
 plt.ylabel("Normalised Price")
 
 plt.legend()
-
 plt.grid(True)
 
 plt.tight_layout()
@@ -180,10 +184,13 @@ plt.savefig(
         FIGURES_DIR,
         "cluster_average_patterns.png"
     ),
-    dpi=300
+    dpi=300,
+    bbox_inches="tight"
 )
 
 plt.show()
+
+plt.close()
 
 cluster_profiles.to_csv(
     os.path.join(
@@ -196,25 +203,24 @@ cluster_profiles.to_csv(
 # Individual stock trajectories within each cluster
 # ==========================================================
 
-for cluster in sorted(clusters["Cluster"].unique()):
+for cluster in sorted(clusters.Cluster.unique()):
 
     tickers = clusters.loc[
-        clusters["Cluster"] == cluster,
+        clusters.Cluster == cluster,
         "Ticker"
     ].tolist()
 
     plt.figure(figsize=(12, 7))
 
-    # Plot every stock in the cluster
     for ticker in tickers:
+
         plt.plot(
             normalised_prices.index,
             normalised_prices[ticker],
             linewidth=1,
-            alpha=0.45
+            alpha=0.40
         )
 
-    # Plot the cluster mean more prominently
     cluster_mean = normalised_prices[
         tickers
     ].mean(axis=1)
@@ -227,7 +233,7 @@ for cluster in sorted(clusters["Cluster"].unique()):
     )
 
     plt.title(
-        f"Normalised Price Trajectories for Cluster {cluster}"
+        f"Normalised Price Trajectories - Cluster {cluster}"
     )
 
     plt.xlabel("Year")
@@ -248,6 +254,7 @@ for cluster in sorted(clusters["Cluster"].unique()):
     )
 
     plt.show()
+
     plt.close()
 
 print("\nFinished.")

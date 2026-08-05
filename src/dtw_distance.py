@@ -1,4 +1,5 @@
 import os
+import time
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -8,90 +9,128 @@ from scipy.spatial.distance import squareform
 from tslearn.metrics import cdist_dtw
 
 
-# --------------------------------------------------
-# 1. Create output folders
-# --------------------------------------------------
+# ============================================================
+# Configuration
+# ============================================================
 
-os.makedirs("data/processed", exist_ok=True)
-os.makedirs("results/figures", exist_ok=True)
+NORMALISED_DATA_PATH = "data/processed/normalised_prices.csv"
+PROCESSED_DATA_DIR = "data/processed"
+FIGURES_DIR = "results/figures"
+
+os.makedirs(PROCESSED_DATA_DIR, exist_ok=True)
+os.makedirs(FIGURES_DIR, exist_ok=True)
 
 
-# --------------------------------------------------
-# 2. Load the stock dataset
-# --------------------------------------------------
+# ============================================================
+# Load cleaned normalised stock-price data
+# ============================================================
 
-data = pd.read_csv(
-    "data/raw/ftse100_40_companies.csv",
-    header=[0, 1],
+normalised_prices = pd.read_csv(
+    NORMALISED_DATA_PATH,
     index_col=0,
     parse_dates=True
 )
 
+normalised_prices = normalised_prices.sort_index()
+normalised_prices = normalised_prices.sort_index(axis=1)
 
-# --------------------------------------------------
-# 3. Extract adjusted closing prices
-# --------------------------------------------------
+print("=" * 60)
+print("DYNAMIC TIME WARPING DISTANCE ANALYSIS")
+print("=" * 60)
 
-prices = data.xs(
-    "Adj Close",
-    level="Price",
-    axis=1
+print(f"Dataset shape: {normalised_prices.shape}")
+print(
+    f"Date range: {normalised_prices.index.min()} "
+    f"to {normalised_prices.index.max()}"
+)
+print(f"Number of companies: {normalised_prices.shape[1]}")
+print(f"Number of trading days: {normalised_prices.shape[0]}")
+
+
+# ============================================================
+# Validate the processed dataset
+# ============================================================
+
+missing_values = int(
+    normalised_prices.isna().sum().sum()
 )
 
-# Remove companies with no data
-prices = prices.dropna(axis=1, how="all")
+print(f"\nTotal missing values: {missing_values}")
 
-# Fill occasional missing values
-prices = prices.ffill().bfill()
+if missing_values > 0:
+    companies_with_missing = (
+        normalised_prices.columns[
+            normalised_prices.isna().any()
+        ].tolist()
+    )
 
-print("\nAdjusted closing prices:")
-print(prices.head())
+    raise ValueError(
+        "The normalised dataset contains missing values for: "
+        + ", ".join(companies_with_missing)
+    )
 
-print("\nPrice data shape:")
-print(prices.shape)
+if not np.isfinite(
+    normalised_prices.to_numpy()
+).all():
+    raise ValueError(
+        "The normalised dataset contains infinite or invalid values."
+    )
+
+if normalised_prices.empty:
+    raise ValueError(
+        "The normalised dataset is empty."
+    )
+
+print("Dataset validation completed successfully.")
 
 
-# --------------------------------------------------
-# 4. Normalise prices by their starting value
-# --------------------------------------------------
+# ============================================================
+# Prepare data for DTW
+# ============================================================
 
-normalised_prices = prices / prices.iloc[0]
-
-normalised_prices.to_csv(
-    "data/processed/normalised_stock_prices.csv"
-)
-
-print("\nNormalised prices:")
-print(normalised_prices.head())
-
-
-# --------------------------------------------------
-# 5. Prepare the data for DTW
-# --------------------------------------------------
-
-# tslearn expects data in the format:
-# number of stocks × number of dates × number of features
+# tslearn expects:
+# number of series × number of time steps × number of features
 #
-# Each stock is a univariate time series, so the final
-# feature dimension is 1.
+# Each stock is a univariate time series, so features = 1.
 
-stock_names = normalised_prices.columns
+stock_names = normalised_prices.columns.tolist()
 
-stock_series = normalised_prices.T.to_numpy()
+stock_series = normalised_prices.T.to_numpy(
+    dtype=float
+)
 
 stock_series_3d = stock_series[:, :, np.newaxis]
 
 print("\nDTW input shape:")
 print(stock_series_3d.shape)
 
+print(f"Series: {stock_series_3d.shape[0]}")
+print(f"Time steps: {stock_series_3d.shape[1]}")
+print(f"Features: {stock_series_3d.shape[2]}")
 
-# --------------------------------------------------
-# 6. Calculate the DTW distance matrix
-# --------------------------------------------------
+
+# ============================================================
+# Calculate pairwise DTW distances
+# ============================================================
+
+print("\nCalculating DTW distance matrix...")
+print(
+    "This may take considerably longer than Euclidean or "
+    "correlation distance."
+)
+
+start_time = time.perf_counter()
 
 dtw_array = cdist_dtw(
     stock_series_3d,
     n_jobs=-1
+)
+
+elapsed_time = time.perf_counter() - start_time
+
+print(
+    f"DTW calculation completed in "
+    f"{elapsed_time:.2f} seconds."
 )
 
 dtw_distances = pd.DataFrame(
@@ -100,24 +139,64 @@ dtw_distances = pd.DataFrame(
     columns=stock_names
 )
 
-print("\nDTW Distance Matrix:")
-print(dtw_distances.round(2))
+dtw_distances.index.name = "Ticker"
+dtw_distances.columns.name = "Ticker"
+
+print("\n" + "=" * 60)
+print("DTW DISTANCE MATRIX")
+print("=" * 60)
+
+print(dtw_distances.round(3))
 
 dtw_distances.to_csv(
-    "data/processed/dtw_distance_matrix.csv"
+    f"{PROCESSED_DATA_DIR}/dtw_distance_matrix.csv"
 )
 
 
-# --------------------------------------------------
-# 7. Convert the matrix into unique stock pairs
-# --------------------------------------------------
+# ============================================================
+# Validate DTW matrix
+# ============================================================
+
+if not np.isfinite(dtw_array).all():
+    raise ValueError(
+        "The DTW distance matrix contains invalid values."
+    )
+
+if not np.allclose(
+    dtw_array,
+    dtw_array.T,
+    atol=1e-8
+):
+    raise ValueError(
+        "The DTW distance matrix is not symmetric."
+    )
+
+if not np.allclose(
+    np.diag(dtw_array),
+    0,
+    atol=1e-8
+):
+    raise ValueError(
+        "The diagonal of the DTW matrix is not zero."
+    )
+
+print("\nDTW matrix validation completed successfully.")
+
+
+# ============================================================
+# Convert distance matrix into unique stock pairs
+# ============================================================
 
 distance_matrix = dtw_distances.rename_axis(
     index=None,
     columns=None
 )
 
-pairs = distance_matrix.stack().reset_index()
+pairs = (
+    distance_matrix
+    .stack()
+    .reset_index()
+)
 
 pairs.columns = [
     "Stock 1",
@@ -125,15 +204,20 @@ pairs.columns = [
     "Distance"
 ]
 
-# Remove comparisons of each stock with itself
+# Remove self-comparisons.
 pairs = pairs[
     pairs["Stock 1"] != pairs["Stock 2"]
 ].copy()
 
-# Treat A-B and B-A as the same pair
+# Treat A-B and B-A as one pair.
 pairs["Pair"] = pairs.apply(
     lambda row: tuple(
-        sorted([row["Stock 1"], row["Stock 2"]])
+        sorted(
+            [
+                row["Stock 1"],
+                row["Stock 2"]
+            ]
+        )
     ),
     axis=1
 )
@@ -142,12 +226,27 @@ pairs = (
     pairs
     .drop_duplicates(subset="Pair")
     .drop(columns="Pair")
+    .reset_index(drop=True)
 )
 
+expected_pairs = (
+    len(stock_names)
+    * (len(stock_names) - 1)
+    // 2
+)
 
-# --------------------------------------------------
-# 8. Find the closest and furthest stock pairs
-# --------------------------------------------------
+print(f"\nUnique stock pairs: {len(pairs)}")
+print(f"Expected unique pairs: {expected_pairs}")
+
+if len(pairs) != expected_pairs:
+    raise ValueError(
+        "The number of unique pairs is incorrect."
+    )
+
+
+# ============================================================
+# Find most similar and most dissimilar pairs
+# ============================================================
 
 closest_pairs = (
     pairs
@@ -161,14 +260,20 @@ furthest_pairs = (
     .reset_index(drop=True)
 )
 
-print("\n10 Most Similar Stock Pairs:")
+print("\n" + "=" * 60)
+print("10 MOST SIMILAR STOCK PAIRS")
+print("=" * 60)
+
 print(
     closest_pairs
     .round(3)
     .to_string(index=False)
 )
 
-print("\n10 Most Dissimilar Stock Pairs:")
+print("\n" + "=" * 60)
+print("10 MOST DISSIMILAR STOCK PAIRS")
+print("=" * 60)
+
 print(
     furthest_pairs
     .round(3)
@@ -176,28 +281,47 @@ print(
 )
 
 closest_pairs.to_csv(
-    "data/processed/closest_dtw_pairs.csv",
+    f"{PROCESSED_DATA_DIR}/closest_dtw_pairs.csv",
     index=False
 )
 
 furthest_pairs.to_csv(
-    "data/processed/furthest_dtw_pairs.csv",
+    f"{PROCESSED_DATA_DIR}/furthest_dtw_pairs.csv",
     index=False
 )
 
 
-# --------------------------------------------------
-# 9. Plot the DTW distance heatmap
-# --------------------------------------------------
+# ============================================================
+# DTW distance summary
+# ============================================================
 
-plt.figure(figsize=(14, 12))
+distance_summary = pairs["Distance"].describe()
 
-plt.imshow(
-    dtw_distances,
+print("\n" + "=" * 60)
+print("DTW DISTANCE SUMMARY")
+print("=" * 60)
+
+print(distance_summary)
+
+distance_summary.to_csv(
+    f"{PROCESSED_DATA_DIR}/dtw_distance_summary.csv",
+    header=["Value"]
+)
+
+
+# ============================================================
+# Plot DTW distance heatmap
+# ============================================================
+
+plt.figure(figsize=(16, 14))
+
+heatmap = plt.imshow(
+    dtw_distances.to_numpy(),
     aspect="auto"
 )
 
 plt.colorbar(
+    heatmap,
     label="DTW Distance"
 )
 
@@ -205,72 +329,151 @@ plt.xticks(
     ticks=range(len(stock_names)),
     labels=stock_names,
     rotation=90,
-    fontsize=8
+    fontsize=5
 )
 
 plt.yticks(
     ticks=range(len(stock_names)),
     labels=stock_names,
-    fontsize=8
+    fontsize=5
 )
 
 plt.title(
-    "Dynamic Time Warping Distance Between Normalised Stock Prices"
+    "Dynamic Time Warping Distances Between Normalised "
+    f"Price Trajectories ({len(stock_names)} Companies)"
 )
 
-plt.xlabel("Stock")
-plt.ylabel("Stock")
-
+plt.xlabel("Company")
+plt.ylabel("Company")
 plt.tight_layout()
 
 plt.savefig(
-    "results/figures/dtw_distance_heatmap.png",
+    f"{FIGURES_DIR}/dtw_distance_heatmap.png",
     dpi=300,
     bbox_inches="tight"
 )
 
 plt.show()
+plt.close()
 
 
-# --------------------------------------------------
-# 10. Create hierarchical dendrogram from DTW matrix
-# --------------------------------------------------
+# ============================================================
+# Hierarchical clustering from precomputed DTW distances
+# ============================================================
 
-# Convert the square DTW matrix into condensed form.
-# checks=False avoids minor floating-point symmetry issues.
+# Convert the full square matrix into condensed form.
 condensed_dtw = squareform(
     dtw_distances.to_numpy(),
-    checks=False
+    checks=True
 )
 
-# Average linkage accepts a precomputed distance matrix.
+# Average linkage can use a precomputed distance matrix.
 linked = linkage(
     condensed_dtw,
     method="average"
 )
 
-plt.figure(figsize=(16, 8))
+print("\n" + "=" * 60)
+print("HIERARCHICAL CLUSTERING")
+print("=" * 60)
+
+print(f"Linkage matrix shape: {linked.shape}")
+print(
+    f"Maximum linkage distance: "
+    f"{linked[:, 2].max():.3f}"
+)
+
+
+# ============================================================
+# Plot DTW dendrogram
+# ============================================================
+
+plt.figure(figsize=(20, 9))
 
 dendrogram(
     linked,
     labels=stock_names,
     leaf_rotation=90,
-    leaf_font_size=8
+    leaf_font_size=7
 )
 
 plt.title(
-    "Hierarchical Dendrogram Using Dynamic Time Warping"
+    "Average-Linkage Hierarchical Dendrogram Using "
+    f"Dynamic Time Warping ({len(stock_names)} Companies)"
 )
 
-plt.xlabel("Stock")
+plt.xlabel("Company")
 plt.ylabel("DTW Distance")
-
 plt.tight_layout()
 
 plt.savefig(
-    "results/figures/dtw_distance_dendrogram.png",
+    f"{FIGURES_DIR}/dtw_distance_dendrogram.png",
     dpi=300,
     bbox_inches="tight"
 )
 
 plt.show()
+plt.close()
+
+
+# ============================================================
+# Save linkage matrix
+# ============================================================
+
+linkage_table = pd.DataFrame(
+    linked,
+    columns=[
+        "Cluster 1",
+        "Cluster 2",
+        "Linkage Distance",
+        "Cluster Size"
+    ]
+)
+
+linkage_table.to_csv(
+    f"{PROCESSED_DATA_DIR}/dtw_average_linkage_matrix.csv",
+    index=False
+)
+
+
+# ============================================================
+# Final summary
+# ============================================================
+
+print("\n" + "=" * 60)
+print("ANALYSIS SUMMARY")
+print("=" * 60)
+
+print(f"Companies analysed: {len(stock_names)}")
+print(f"Trading days analysed: {normalised_prices.shape[0]}")
+print(f"Unique company pairs compared: {len(pairs)}")
+print("Distance metric: Dynamic Time Warping")
+print("Hierarchical linkage method: Average")
+print(f"DTW computation time: {elapsed_time:.2f} seconds")
+
+print("\nSaved processed files:")
+print(
+    f"- {PROCESSED_DATA_DIR}/dtw_distance_matrix.csv"
+)
+print(
+    f"- {PROCESSED_DATA_DIR}/closest_dtw_pairs.csv"
+)
+print(
+    f"- {PROCESSED_DATA_DIR}/furthest_dtw_pairs.csv"
+)
+print(
+    f"- {PROCESSED_DATA_DIR}/dtw_distance_summary.csv"
+)
+print(
+    f"- {PROCESSED_DATA_DIR}/dtw_average_linkage_matrix.csv"
+)
+
+print("\nSaved figures:")
+print(
+    f"- {FIGURES_DIR}/dtw_distance_heatmap.png"
+)
+print(
+    f"- {FIGURES_DIR}/dtw_distance_dendrogram.png"
+)
+
+print("\nDTW-distance analysis completed successfully.")

@@ -1,83 +1,107 @@
 import os
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 from scipy.cluster.hierarchy import dendrogram, linkage
 from sklearn.metrics import pairwise_distances
 
 
-# --------------------------------------------------
-# 1. Create output folders
-# --------------------------------------------------
+# ============================================================
+# Configuration
+# ============================================================
 
-os.makedirs("data/processed", exist_ok=True)
-os.makedirs("results/figures", exist_ok=True)
+NORMALISED_DATA_PATH = "data/processed/normalised_prices.csv"
+PROCESSED_DATA_DIR = "data/processed"
+FIGURES_DIR = "results/figures"
+
+os.makedirs(PROCESSED_DATA_DIR, exist_ok=True)
+os.makedirs(FIGURES_DIR, exist_ok=True)
 
 
-# --------------------------------------------------
-# 2. Load the stock dataset
-# --------------------------------------------------
+# ============================================================
+# Load cleaned normalised stock-price data
+# ============================================================
 
-data = pd.read_csv(
-    "data/raw/ftse100_40_companies.csv",
-    header=[0, 1],
+normalised_prices = pd.read_csv(
+    NORMALISED_DATA_PATH,
     index_col=0,
     parse_dates=True
 )
 
+normalised_prices = normalised_prices.sort_index()
+normalised_prices = normalised_prices.sort_index(axis=1)
 
-# --------------------------------------------------
-# 3. Extract adjusted closing prices
-# --------------------------------------------------
+print("=" * 60)
+print("CORRELATION DISTANCE ANALYSIS")
+print("=" * 60)
 
-# CSV structure:
-# level 0 = ticker
-# level 1 = price type
-prices = data.xs(
-    "Adj Close",
-    level="Price",
-    axis=1
+print(f"Dataset shape: {normalised_prices.shape}")
+print(
+    f"Date range: {normalised_prices.index.min()} "
+    f"to {normalised_prices.index.max()}"
+)
+print(f"Number of companies: {normalised_prices.shape[1]}")
+print(f"Number of trading days: {normalised_prices.shape[0]}")
+
+
+# ============================================================
+# Validate the processed dataset
+# ============================================================
+
+missing_values = int(
+    normalised_prices.isna().sum().sum()
 )
 
-# Remove companies with no valid observations
-prices = prices.dropna(axis=1, how="all")
+print(f"\nTotal missing values: {missing_values}")
 
-# Fill occasional missing observations
-prices = prices.ffill().bfill()
+if missing_values > 0:
+    companies_with_missing = (
+        normalised_prices.columns[
+            normalised_prices.isna().any()
+        ].tolist()
+    )
 
-print("\nAdjusted closing prices:")
-print(prices.head())
+    raise ValueError(
+        "The normalised dataset contains missing values for: "
+        + ", ".join(companies_with_missing)
+    )
 
-print("\nPrice data shape:")
-print(prices.shape)
+if not np.isfinite(
+    normalised_prices.to_numpy()
+).all():
+    raise ValueError(
+        "The normalised dataset contains infinite or invalid values."
+    )
+
+if normalised_prices.empty:
+    raise ValueError(
+        "The normalised dataset is empty."
+    )
+
+print("Dataset validation completed successfully.")
 
 
-# --------------------------------------------------
-# 4. Normalise each stock by its initial value
-# --------------------------------------------------
+# ============================================================
+# Prepare data for distance calculations
+# ============================================================
 
-normalised_prices = prices / prices.iloc[0]
-
-normalised_prices.to_csv(
-    "data/processed/normalised_stock_prices.csv"
-)
-
-print("\nNormalised prices:")
-print(normalised_prices.head())
-
-
-# --------------------------------------------------
-# 5. Prepare the data for distance calculations
-# --------------------------------------------------
-
-# Rows must represent stocks and columns must represent dates
+# Rows = companies
+# Columns = trading days
 stock_series = normalised_prices.T
 
+print("\nClustering data shape:")
+print(stock_series.shape)
 
-# --------------------------------------------------
-# 6. Calculate correlation distances
-# --------------------------------------------------
+print(f"Rows (companies): {stock_series.shape[0]}")
+print(f"Columns (trading days): {stock_series.shape[1]}")
 
+
+# ============================================================
+# Calculate pairwise correlation distances
+# ============================================================
+
+# Correlation distance is defined as 1 - Pearson correlation.
 correlation_array = pairwise_distances(
     stock_series,
     metric="correlation"
@@ -89,50 +113,84 @@ correlation_distances = pd.DataFrame(
     columns=stock_series.index
 )
 
-print("\nCorrelation Distance Matrix:")
+correlation_distances.index.name = "Ticker"
+correlation_distances.columns.name = "Ticker"
+
+print("\n" + "=" * 60)
+print("CORRELATION DISTANCE MATRIX")
+print("=" * 60)
+
 print(correlation_distances.round(3))
 
 correlation_distances.to_csv(
-    "data/processed/correlation_distance_matrix.csv"
+    f"{PROCESSED_DATA_DIR}/correlation_distance_matrix.csv"
 )
 
 
-# --------------------------------------------------
-# 7. Convert the matrix into unique stock pairs
-# --------------------------------------------------
+# ============================================================
+# Convert distance matrix into unique company pairs
+# ============================================================
 
-# Remove axis names to avoid duplicate-column errors
 distance_matrix = correlation_distances.rename_axis(
     index=None,
     columns=None
 )
 
-pairs = distance_matrix.stack().reset_index()
-pairs.columns = ["Stock 1", "Stock 2", "Distance"]
+pairs = (
+    distance_matrix
+    .stack()
+    .reset_index()
+)
 
-# Remove self-comparisons
+pairs.columns = [
+    "Stock 1",
+    "Stock 2",
+    "Distance"
+]
+
+# Remove self-comparisons.
 pairs = pairs[
     pairs["Stock 1"] != pairs["Stock 2"]
 ].copy()
 
-# Treat A-B and B-A as the same pair
+# Treat A-B and B-A as the same pair.
 pairs["Pair"] = pairs.apply(
     lambda row: tuple(
-        sorted([row["Stock 1"], row["Stock 2"]])
+        sorted(
+            [
+                row["Stock 1"],
+                row["Stock 2"]
+            ]
+        )
     ),
     axis=1
 )
 
-pairs = pairs.drop_duplicates(
-    subset="Pair"
-).drop(
-    columns="Pair"
+pairs = (
+    pairs
+    .drop_duplicates(subset="Pair")
+    .drop(columns="Pair")
+    .reset_index(drop=True)
 )
 
+expected_pairs = (
+    stock_series.shape[0]
+    * (stock_series.shape[0] - 1)
+    // 2
+)
 
-# --------------------------------------------------
-# 8. Find the closest and furthest stock pairs
-# --------------------------------------------------
+print(f"\nUnique stock pairs: {len(pairs)}")
+print(f"Expected unique pairs: {expected_pairs}")
+
+if len(pairs) != expected_pairs:
+    raise ValueError(
+        "The number of unique pairs is incorrect."
+    )
+
+
+# ============================================================
+# Find most similar and most dissimilar pairs
+# ============================================================
 
 closest_pairs = (
     pairs
@@ -146,14 +204,20 @@ furthest_pairs = (
     .reset_index(drop=True)
 )
 
-print("\n10 Most Similar Stock Pairs:")
+print("\n" + "=" * 60)
+print("10 MOST SIMILAR STOCK PAIRS")
+print("=" * 60)
+
 print(
     closest_pairs
     .round(3)
     .to_string(index=False)
 )
 
-print("\n10 Most Dissimilar Stock Pairs:")
+print("\n" + "=" * 60)
+print("10 MOST DISSIMILAR STOCK PAIRS")
+print("=" * 60)
+
 print(
     furthest_pairs
     .round(3)
@@ -161,96 +225,214 @@ print(
 )
 
 closest_pairs.to_csv(
-    "data/processed/closest_correlation_pairs.csv",
+    f"{PROCESSED_DATA_DIR}/closest_correlation_pairs.csv",
     index=False
 )
 
 furthest_pairs.to_csv(
-    "data/processed/furthest_correlation_pairs.csv",
+    f"{PROCESSED_DATA_DIR}/furthest_correlation_pairs.csv",
     index=False
 )
 
 
-# --------------------------------------------------
-# 9. Plot the correlation distance heatmap
-# --------------------------------------------------
+# ============================================================
+# Summary statistics for correlation distances
+# ============================================================
 
-plt.figure(figsize=(14, 12))
+distance_summary = pairs["Distance"].describe()
 
-plt.imshow(
-    correlation_distances,
-    aspect="auto"
+print("\n" + "=" * 60)
+print("CORRELATION DISTANCE SUMMARY")
+print("=" * 60)
+
+print(distance_summary)
+
+distance_summary.to_csv(
+    f"{PROCESSED_DATA_DIR}/correlation_distance_summary.csv",
+    header=["Value"]
+)
+
+
+# ============================================================
+# Plot correlation-distance heatmap
+# ============================================================
+
+plt.figure(figsize=(16, 14))
+
+heatmap = plt.imshow(
+    correlation_distances.to_numpy(),
+    aspect="auto",
+    vmin=0,
+    vmax=2
 )
 
 plt.colorbar(
+    heatmap,
     label="Correlation Distance"
 )
 
 plt.xticks(
-    ticks=range(len(correlation_distances.columns)),
+    ticks=range(
+        len(correlation_distances.columns)
+    ),
     labels=correlation_distances.columns,
     rotation=90,
-    fontsize=8
+    fontsize=5
 )
 
 plt.yticks(
-    ticks=range(len(correlation_distances.index)),
+    ticks=range(
+        len(correlation_distances.index)
+    ),
     labels=correlation_distances.index,
-    fontsize=8
+    fontsize=5
 )
 
 plt.title(
-    "Correlation Distance Between Normalised Stock Prices"
+    "Correlation Distances Between Normalised Price "
+    f"Trajectories ({stock_series.shape[0]} Companies)"
 )
 
-plt.xlabel("Stock")
-plt.ylabel("Stock")
-
+plt.xlabel("Company")
+plt.ylabel("Company")
 plt.tight_layout()
 
 plt.savefig(
-    "results/figures/correlation_distance_heatmap.png",
+    f"{FIGURES_DIR}/correlation_distance_heatmap.png",
     dpi=300,
     bbox_inches="tight"
 )
 
 plt.show()
+plt.close()
 
 
-# --------------------------------------------------
-# 10. Create hierarchical dendrogram
-# --------------------------------------------------
+# ============================================================
+# Hierarchical clustering using average linkage
+# ============================================================
 
-# Ward linkage cannot be used with correlation distance.
-# Average linkage is therefore used instead.
+# Ward linkage is not valid with correlation distance.
+# Average linkage is therefore used.
 linked = linkage(
-    stock_series,
+    stock_series.to_numpy(),
     method="average",
     metric="correlation"
 )
 
-plt.figure(figsize=(16, 8))
+print("\n" + "=" * 60)
+print("HIERARCHICAL CLUSTERING")
+print("=" * 60)
+
+print(f"Linkage matrix shape: {linked.shape}")
+print(
+    f"Maximum linkage distance: "
+    f"{linked[:, 2].max():.3f}"
+)
+
+
+# ============================================================
+# Plot dendrogram
+# ============================================================
+
+plt.figure(figsize=(20, 9))
 
 dendrogram(
     linked,
-    labels=stock_series.index,
+    labels=stock_series.index.tolist(),
     leaf_rotation=90,
-    leaf_font_size=8
+    leaf_font_size=7
 )
 
 plt.title(
-    "Hierarchical Dendrogram Using Correlation Distance"
+    "Average-Linkage Hierarchical Dendrogram Using "
+    f"Correlation Distance ({stock_series.shape[0]} Companies)"
 )
 
-plt.xlabel("Stock")
+plt.xlabel("Company")
 plt.ylabel("Correlation Distance")
-
 plt.tight_layout()
 
 plt.savefig(
-    "results/figures/correlation_distance_dendrogram.png",
+    f"{FIGURES_DIR}/correlation_distance_dendrogram.png",
     dpi=300,
     bbox_inches="tight"
 )
 
 plt.show()
+plt.close()
+
+
+# ============================================================
+# Save linkage matrix
+# ============================================================
+
+linkage_table = pd.DataFrame(
+    linked,
+    columns=[
+        "Cluster 1",
+        "Cluster 2",
+        "Linkage Distance",
+        "Cluster Size"
+    ]
+)
+
+linkage_table.to_csv(
+    f"{PROCESSED_DATA_DIR}/correlation_average_linkage_matrix.csv",
+    index=False
+)
+
+
+# ============================================================
+# Final summary
+# ============================================================
+
+print("\n" + "=" * 60)
+print("ANALYSIS SUMMARY")
+print("=" * 60)
+
+print(f"Companies analysed: {stock_series.shape[0]}")
+print(f"Trading days analysed: {stock_series.shape[1]}")
+print(f"Unique company pairs compared: {len(pairs)}")
+print("Distance metric: Correlation distance")
+print("Hierarchical linkage method: Average")
+
+print("\nSaved processed files:")
+
+print(
+    f"- {PROCESSED_DATA_DIR}/"
+    "correlation_distance_matrix.csv"
+)
+
+print(
+    f"- {PROCESSED_DATA_DIR}/"
+    "closest_correlation_pairs.csv"
+)
+
+print(
+    f"- {PROCESSED_DATA_DIR}/"
+    "furthest_correlation_pairs.csv"
+)
+
+print(
+    f"- {PROCESSED_DATA_DIR}/"
+    "correlation_distance_summary.csv"
+)
+
+print(
+    f"- {PROCESSED_DATA_DIR}/"
+    "correlation_average_linkage_matrix.csv"
+)
+
+print("\nSaved figures:")
+
+print(
+    f"- {FIGURES_DIR}/"
+    "correlation_distance_heatmap.png"
+)
+
+print(
+    f"- {FIGURES_DIR}/"
+    "correlation_distance_dendrogram.png"
+)
+
+print("\nCorrelation-distance analysis completed successfully.")
