@@ -1,0 +1,5 @@
+Method,Selected k,Reason
+Silhouette Score,2,Highest Silhouette Score
+Davies-Bouldin Index,4,Lowest Davies-Bouldin Index
+Calinski-Harabasz Index,3,Highest Calinski-Harabasz Index
+Final Selected k,3,"Selected using all metrics, the elbow method, cluster-size balance and interpretability"

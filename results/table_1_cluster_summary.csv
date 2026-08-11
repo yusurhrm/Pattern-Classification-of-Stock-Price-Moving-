@@ -1,0 +1,4 @@
+Cluster,Cluster Name,Companies,Mean Final Normalised Value,Median Final Normalised Value,Dominant Sector,Dominant Sector Count,Interpretation
+1,Stable or Modest Growth,68,1.13,1.05,Consumer Goods,7,Relatively stable trajectories with limited or modest long-term appreciation
+2,Exceptional Growth,2,9.39,9.39,Aerospace and Defence,1,"Exceptional proportional growth, represented by BGEO.L and RR.L"
+3,Strong Sustained Growth,28,2.59,2.33,Banking,5,Stronger sustained long-term appreciation than the majority cluster

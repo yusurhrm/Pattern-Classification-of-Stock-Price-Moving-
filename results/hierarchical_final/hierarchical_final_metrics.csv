@@ -1,0 +1,2 @@
+Linkage Method,Distance Metric,Number of Clusters,Silhouette Score,Davies-Bouldin Index,Calinski-Harabasz Index,Smallest Cluster,Largest Cluster,Singleton Clusters
+ward,euclidean,3,0.5106621400408752,0.5734448127300519,112.31051205284182,1,67,1

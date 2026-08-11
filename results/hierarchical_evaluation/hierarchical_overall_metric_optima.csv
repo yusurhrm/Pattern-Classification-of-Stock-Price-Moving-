@@ -1,0 +1,4 @@
+Metric,Best Linkage,Best k,Metric Value,Singleton Clusters
+Silhouette Score,complete,2,0.8253161110271713,1
+Davies-Bouldin Index,complete,2,0.1083373976807232,1
+Calinski-Harabasz Index,ward,6,127.57018634942243,2
