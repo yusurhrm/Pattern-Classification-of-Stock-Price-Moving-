@@ -1,0 +1,778 @@
+import os
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
+from tslearn.clustering import KShape
+from tslearn.preprocessing import TimeSeriesScalerMeanVariance
+from tslearn.clustering import silhouette_score
+
+
+# ============================================================
+# Configuration
+# ============================================================
+
+DATA_PATH = "data/processed/normalised_prices.csv"
+
+RESULTS_DIR = "results/kshape_evaluation"
+FIGURES_DIR = "results/figures/kshape_evaluation"
+
+MIN_K = 2
+MAX_K = 10
+
+RANDOM_STATE = 42
+N_INIT = 5
+MAX_ITER = 100
+
+os.makedirs(
+    RESULTS_DIR,
+    exist_ok=True
+)
+
+os.makedirs(
+    FIGURES_DIR,
+    exist_ok=True
+)
+
+
+# ============================================================
+# Load cleaned normalised prices
+# ============================================================
+
+normalised_prices = pd.read_csv(
+    DATA_PATH,
+    index_col=0,
+    parse_dates=True
+)
+
+normalised_prices = (
+    normalised_prices
+    .sort_index()
+    .sort_index(axis=1)
+)
+
+print("=" * 80)
+print("K-SHAPE CLUSTERING EVALUATION")
+print("=" * 80)
+
+print(
+    f"\nDataset shape: "
+    f"{normalised_prices.shape}"
+)
+
+print(
+    f"Date range: "
+    f"{normalised_prices.index.min()} "
+    f"to {normalised_prices.index.max()}"
+)
+
+print(
+    f"Number of companies: "
+    f"{normalised_prices.shape[1]}"
+)
+
+print(
+    f"Number of trading days: "
+    f"{normalised_prices.shape[0]}"
+)
+
+
+# ============================================================
+# Validate dataset
+# ============================================================
+
+if normalised_prices.empty:
+    raise ValueError(
+        "The normalised-price dataset is empty."
+    )
+
+if normalised_prices.isna().any().any():
+
+    missing_companies = (
+        normalised_prices.columns[
+            normalised_prices.isna().any()
+        ].tolist()
+    )
+
+    raise ValueError(
+        "Missing values found for: "
+        + ", ".join(missing_companies)
+    )
+
+if not np.isfinite(
+    normalised_prices.to_numpy()
+).all():
+
+    raise ValueError(
+        "The dataset contains "
+        "infinite or invalid values."
+    )
+
+print(
+    "\nInput validation completed successfully."
+)
+
+
+# ============================================================
+# Prepare K-Shape input
+# ============================================================
+
+# Before transposing:
+# rows = dates
+# columns = companies
+#
+# After transposing:
+# rows = companies
+# columns = time observations
+
+X_2d = normalised_prices.T.to_numpy()
+
+ticker_names = (
+    normalised_prices.columns.tolist()
+)
+
+print("\nOriginal clustering matrix:")
+print(X_2d.shape)
+
+
+# ============================================================
+# Convert to tslearn format
+# ============================================================
+
+# tslearn requires:
+#
+# (number of time series,
+#  number of timestamps,
+#  number of dimensions)
+#
+# Stock prices are univariate, therefore dimension = 1.
+
+X = X_2d[:, :, np.newaxis]
+
+print("\nK-Shape input shape:")
+print(X.shape)
+
+
+# ============================================================
+# Z-normalise each time series
+# ============================================================
+
+# K-Shape is designed to compare the shape of time series.
+# Each series is therefore transformed to mean = 0 and
+# standard deviation = 1.
+
+scaler = TimeSeriesScalerMeanVariance(
+    mu=0.0,
+    std=1.0
+)
+
+X_scaled = scaler.fit_transform(
+    X
+)
+
+print(
+    "\nZ-normalisation completed."
+)
+
+print(
+    f"Scaled matrix shape: "
+    f"{X_scaled.shape}"
+)
+
+
+# ============================================================
+# Evaluate candidate values of k
+# ============================================================
+
+evaluation_rows = []
+assignment_rows = []
+
+k_values = list(
+    range(
+        MIN_K,
+        MAX_K + 1
+    )
+)
+
+print(
+    "\nValues of k to evaluate:"
+)
+
+print(k_values)
+
+
+for k in k_values:
+
+    print("\n" + "=" * 80)
+    print(
+        f"EVALUATING K-SHAPE: k = {k}"
+    )
+    print("=" * 80)
+
+    model = KShape(
+        n_clusters=k,
+        max_iter=MAX_ITER,
+        n_init=N_INIT,
+        random_state=RANDOM_STATE,
+        verbose=False
+    )
+
+    labels = model.fit_predict(
+        X_scaled
+    )
+
+    # --------------------------------------------------------
+    # Cluster sizes
+    # --------------------------------------------------------
+
+    cluster_sizes = (
+        pd.Series(labels)
+        .value_counts()
+        .sort_index()
+    )
+
+    smallest_cluster = int(
+        cluster_sizes.min()
+    )
+
+    largest_cluster = int(
+        cluster_sizes.max()
+    )
+
+    singleton_clusters = int(
+        (
+            cluster_sizes == 1
+        ).sum()
+    )
+
+
+    # --------------------------------------------------------
+    # K-Shape inertia
+    # --------------------------------------------------------
+
+    inertia = float(
+        model.inertia_
+    )
+
+
+    # --------------------------------------------------------
+    # Silhouette score
+    # --------------------------------------------------------
+
+    # tslearn silhouette_score can use a time-series-specific
+    # metric. DTW is used here as an independent measure of
+    # how well the resulting groups separate.
+    #
+    # Higher values indicate stronger separation.
+
+    silhouette = silhouette_score(
+        X_scaled,
+        labels,
+        metric="dtw",
+        n_jobs=-1
+    )
+
+
+    # --------------------------------------------------------
+    # Save evaluation result
+    # --------------------------------------------------------
+
+    evaluation_rows.append({
+        "k": k,
+        "KShape Inertia":
+            inertia,
+        "DTW Silhouette Score":
+            silhouette,
+        "Smallest Cluster":
+            smallest_cluster,
+        "Largest Cluster":
+            largest_cluster,
+        "Singleton Clusters":
+            singleton_clusters
+    })
+
+
+    # --------------------------------------------------------
+    # Save assignments
+    # --------------------------------------------------------
+
+    for ticker, label in zip(
+        ticker_names,
+        labels
+    ):
+
+        assignment_rows.append({
+            "k": k,
+            "Ticker": ticker,
+            "Cluster": int(
+                label + 1
+            )
+        })
+
+
+    # --------------------------------------------------------
+    # Print cluster sizes
+    # --------------------------------------------------------
+
+    print(
+        f"\nK-Shape inertia: "
+        f"{inertia:.4f}"
+    )
+
+    print(
+        f"DTW Silhouette Score: "
+        f"{silhouette:.4f}"
+    )
+
+    print(
+        "\nCluster sizes:"
+    )
+
+    for cluster_number, size in (
+        cluster_sizes.items()
+    ):
+
+        print(
+            f"Cluster "
+            f"{cluster_number + 1}: "
+            f"{size}"
+        )
+
+    print(
+        f"\nSingleton clusters: "
+        f"{singleton_clusters}"
+    )
+
+
+# ============================================================
+# Convert results to DataFrames
+# ============================================================
+
+evaluation_df = pd.DataFrame(
+    evaluation_rows
+)
+
+assignments_df = pd.DataFrame(
+    assignment_rows
+)
+
+
+# ============================================================
+# Save evaluation results
+# ============================================================
+
+evaluation_df.to_csv(
+    os.path.join(
+        RESULTS_DIR,
+        "kshape_evaluation_metrics.csv"
+    ),
+    index=False
+)
+
+assignments_df.to_csv(
+    os.path.join(
+        RESULTS_DIR,
+        "kshape_all_assignments.csv"
+    ),
+    index=False
+)
+
+
+# ============================================================
+# Identify best k by silhouette
+# ============================================================
+
+best_silhouette_index = (
+    evaluation_df[
+        "DTW Silhouette Score"
+    ]
+    .idxmax()
+)
+
+best_silhouette_k = int(
+    evaluation_df.loc[
+        best_silhouette_index,
+        "k"
+    ]
+)
+
+best_silhouette_value = float(
+    evaluation_df.loc[
+        best_silhouette_index,
+        "DTW Silhouette Score"
+    ]
+)
+
+
+# ============================================================
+# Print evaluation table
+# ============================================================
+
+print("\n" + "=" * 100)
+print("K-SHAPE EVALUATION RESULTS")
+print("=" * 100)
+
+print(
+    evaluation_df.to_string(
+        index=False
+    )
+)
+
+print("\n" + "=" * 100)
+print("BEST k BY DTW SILHOUETTE")
+print("=" * 100)
+
+print(
+    f"Best k: "
+    f"{best_silhouette_k}"
+)
+
+print(
+    f"Silhouette Score: "
+    f"{best_silhouette_value:.4f}"
+)
+
+
+# ============================================================
+# Plot K-Shape inertia
+# ============================================================
+
+plt.figure(
+    figsize=(8, 5)
+)
+
+plt.plot(
+    evaluation_df["k"],
+    evaluation_df[
+        "KShape Inertia"
+    ],
+    marker="o"
+)
+
+plt.xlabel(
+    "Number of Clusters (k)"
+)
+
+plt.ylabel(
+    "K-Shape Inertia"
+)
+
+plt.title(
+    "K-Shape Inertia Across "
+    "Candidate Cluster Numbers"
+)
+
+plt.xticks(
+    k_values
+)
+
+plt.grid(
+    alpha=0.3
+)
+
+plt.tight_layout()
+
+plt.savefig(
+    os.path.join(
+        FIGURES_DIR,
+        "kshape_inertia.png"
+    ),
+    dpi=300,
+    bbox_inches="tight"
+)
+
+plt.show()
+plt.close()
+
+
+# ============================================================
+# Plot silhouette scores
+# ============================================================
+
+plt.figure(
+    figsize=(8, 5)
+)
+
+plt.plot(
+    evaluation_df["k"],
+    evaluation_df[
+        "DTW Silhouette Score"
+    ],
+    marker="o"
+)
+
+plt.axvline(
+    best_silhouette_k,
+    linestyle="--",
+    label=(
+        f"Best k = "
+        f"{best_silhouette_k}"
+    )
+)
+
+plt.xlabel(
+    "Number of Clusters (k)"
+)
+
+plt.ylabel(
+    "DTW Silhouette Score"
+)
+
+plt.title(
+    "K-Shape DTW Silhouette Scores"
+)
+
+plt.xticks(
+    k_values
+)
+
+plt.legend()
+
+plt.grid(
+    alpha=0.3
+)
+
+plt.tight_layout()
+
+plt.savefig(
+    os.path.join(
+        FIGURES_DIR,
+        "kshape_dtw_silhouette.png"
+    ),
+    dpi=300,
+    bbox_inches="tight"
+)
+
+plt.show()
+plt.close()
+
+
+# ============================================================
+# Plot cluster-size balance
+# ============================================================
+
+plt.figure(
+    figsize=(8, 5)
+)
+
+plt.plot(
+    evaluation_df["k"],
+    evaluation_df[
+        "Smallest Cluster"
+    ],
+    marker="o",
+    label="Smallest cluster"
+)
+
+plt.plot(
+    evaluation_df["k"],
+    evaluation_df[
+        "Largest Cluster"
+    ],
+    marker="o",
+    label="Largest cluster"
+)
+
+plt.xlabel(
+    "Number of Clusters (k)"
+)
+
+plt.ylabel(
+    "Number of Companies"
+)
+
+plt.title(
+    "K-Shape Cluster-Size Balance"
+)
+
+plt.xticks(
+    k_values
+)
+
+plt.legend()
+
+plt.grid(
+    alpha=0.3
+)
+
+plt.tight_layout()
+
+plt.savefig(
+    os.path.join(
+        FIGURES_DIR,
+        "kshape_cluster_size_balance.png"
+    ),
+    dpi=300,
+    bbox_inches="tight"
+)
+
+plt.show()
+plt.close()
+
+
+# ============================================================
+# Plot singleton clusters
+# ============================================================
+
+plt.figure(
+    figsize=(8, 5)
+)
+
+plt.plot(
+    evaluation_df["k"],
+    evaluation_df[
+        "Singleton Clusters"
+    ],
+    marker="o"
+)
+
+plt.xlabel(
+    "Number of Clusters (k)"
+)
+
+plt.ylabel(
+    "Number of Singleton Clusters"
+)
+
+plt.title(
+    "K-Shape Singleton Clusters"
+)
+
+plt.xticks(
+    k_values
+)
+
+plt.grid(
+    alpha=0.3
+)
+
+plt.tight_layout()
+
+plt.savefig(
+    os.path.join(
+        FIGURES_DIR,
+        "kshape_singleton_clusters.png"
+    ),
+    dpi=300,
+    bbox_inches="tight"
+)
+
+plt.show()
+plt.close()
+
+
+# ============================================================
+# Print candidate cluster memberships
+# ============================================================
+
+candidate_k_values = [
+    2,
+    3,
+    4,
+    5,
+    7,
+    10
+]
+
+for k in candidate_k_values:
+
+    selected = assignments_df.loc[
+        assignments_df[
+            "k"
+        ]
+        == k
+    ]
+
+    print("\n" + "=" * 80)
+    print(
+        f"K-SHAPE CLUSTER MEMBERSHIPS "
+        f"FOR k = {k}"
+    )
+    print("=" * 80)
+
+    grouped = (
+        selected
+        .groupby(
+            "Cluster"
+        )[
+            "Ticker"
+        ]
+        .apply(
+            lambda tickers:
+                ", ".join(
+                    sorted(
+                        tickers
+                    )
+                )
+        )
+    )
+
+    for cluster_number, members in (
+        grouped.items()
+    ):
+
+        size = int(
+            (
+                selected[
+                    "Cluster"
+                ]
+                == cluster_number
+            )
+            .sum()
+        )
+
+        print(
+            f"\nCluster "
+            f"{cluster_number} "
+            f"({size} companies):"
+        )
+
+        print(
+            members
+        )
+
+
+# ============================================================
+# Final summary
+# ============================================================
+
+print("\n" + "=" * 100)
+print("K-SHAPE EVALUATION COMPLETED")
+print("=" * 100)
+
+print(
+    f"\nCompanies analysed: "
+    f"{X_scaled.shape[0]}"
+)
+
+print(
+    f"Time points per company: "
+    f"{X_scaled.shape[1]}"
+)
+
+print(
+    f"k values evaluated: "
+    f"{MIN_K} to {MAX_K}"
+)
+
+print(
+    f"Best silhouette k: "
+    f"{best_silhouette_k}"
+)
+
+print(
+    "\nResults saved to:"
+)
+
+print(
+    RESULTS_DIR
+)
+
+print(
+    "\nFigures saved to:"
+)
+
+print(
+    FIGURES_DIR
+)
