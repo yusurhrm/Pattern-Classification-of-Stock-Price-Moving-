@@ -1,0 +1,99 @@
+Ticker,DBSCAN Label,Cluster
+AAF.L,-1,Noise
+AZN.L,-1,Noise
+BA.L,-1,Noise
+BAB.L,-1,Noise
+BARC.L,-1,Noise
+BEZ.L,-1,Noise
+BGEO.L,-1,Noise
+BNZL.L,-1,Noise
+BP.L,-1,Noise
+CNA.L,-1,Noise
+DGE.L,-1,Noise
+DPLM.L,-1,Noise
+EDV.L,-1,Noise
+FRES.L,-1,Noise
+GLEN.L,-1,Noise
+HSBA.L,-1,Noise
+IAG.L,-1,Noise
+IHG.L,-1,Noise
+III.L,-1,Noise
+LLOY.L,-1,Noise
+MKS.L,-1,Noise
+NWG.L,-1,Noise
+RR.L,-1,Noise
+SHEL.L,-1,Noise
+STAN.L,-1,Noise
+STJ.L,-1,Noise
+AAL.L,0,Cluster 1
+ABDN.L,0,Cluster 1
+ABF.L,0,Cluster 1
+ADM.L,0,Cluster 1
+ALW.L,0,Cluster 1
+ANTO.L,0,Cluster 1
+AUTO.L,0,Cluster 1
+AV.L,0,Cluster 1
+BATS.L,0,Cluster 1
+BBOX.L,0,Cluster 1
+BKG.L,0,Cluster 1
+BLND.L,0,Cluster 1
+BRBY.L,0,Cluster 1
+BT-A.L,0,Cluster 1
+BTRW.L,0,Cluster 1
+CCEP.L,0,Cluster 1
+CCH.L,0,Cluster 1
+CRDA.L,0,Cluster 1
+CTEC.L,0,Cluster 1
+DCC.L,0,Cluster 1
+ENT.L,0,Cluster 1
+EXPN.L,0,Cluster 1
+FCIT.L,0,Cluster 1
+GAW.L,0,Cluster 1
+GSK.L,0,Cluster 1
+HLMA.L,0,Cluster 1
+HSX.L,0,Cluster 1
+HWDN.L,0,Cluster 1
+ICG.L,0,Cluster 1
+IGG.L,0,Cluster 1
+IMB.L,0,Cluster 1
+IMI.L,0,Cluster 1
+INF.L,0,Cluster 1
+ITRK.L,0,Cluster 1
+JD.L,0,Cluster 1
+KGF.L,0,Cluster 1
+LAND.L,0,Cluster 1
+LGEN.L,0,Cluster 1
+LMP.L,0,Cluster 1
+LSEG.L,0,Cluster 1
+MNDI.L,0,Cluster 1
+MNG.L,0,Cluster 1
+MRO.L,0,Cluster 1
+NG.L,0,Cluster 1
+NXT.L,0,Cluster 1
+PCT.L,0,Cluster 1
+PRU.L,0,Cluster 1
+PSH.L,0,Cluster 1
+PSN.L,0,Cluster 1
+PSON.L,0,Cluster 1
+RIO.L,0,Cluster 1
+RKT.L,0,Cluster 1
+RMV.L,0,Cluster 1
+RTO.L,0,Cluster 1
+SBRY.L,0,Cluster 1
+SDR.L,0,Cluster 1
+SGRO.L,0,Cluster 1
+SMIN.L,0,Cluster 1
+SMT.L,0,Cluster 1
+SN.L,0,Cluster 1
+SPX.L,0,Cluster 1
+SSE.L,0,Cluster 1
+SVT.L,0,Cluster 1
+TSCO.L,0,Cluster 1
+ULVR.L,0,Cluster 1
+UU.L,0,Cluster 1
+VOD.L,0,Cluster 1
+WEIR.L,0,Cluster 1
+WTB.L,0,Cluster 1
+CPG.L,1,Cluster 2
+REL.L,1,Cluster 2
+SGE.L,1,Cluster 2

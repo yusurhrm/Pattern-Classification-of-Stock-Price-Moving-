@@ -1,0 +1,2 @@
+eps,min_samples,Number of Clusters,Noise Points,Noise Percentage,Silhouette Score,PCA Components,PCA Variance Retained (%)
+4.037274,3,2,26,26.53061224489796,0.5052135095797012,3,96.55692182221752
