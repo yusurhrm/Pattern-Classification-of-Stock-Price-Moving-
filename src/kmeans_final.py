@@ -5,9 +5,6 @@ import matplotlib.pyplot as plt
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 
-# ==========================================================
-# Directories
-# ==========================================================
 
 DATA_PATH = "data/processed/normalised_prices.csv"
 
@@ -17,9 +14,7 @@ RESULTS_DIR = "results"
 os.makedirs(FIGURES_DIR, exist_ok=True)
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
-# ==========================================================
-# Load cleaned normalised data
-# ==========================================================
+
 
 normalised_prices = pd.read_csv(
     DATA_PATH,
@@ -38,15 +33,9 @@ print(f"\nDataset shape: {normalised_prices.shape}")
 print(f"Companies: {normalised_prices.shape[1]}")
 print(f"Trading days: {normalised_prices.shape[0]}")
 
-# ==========================================================
-# Prepare data
-# ==========================================================
 
 X = normalised_prices.T
 
-# ==========================================================
-# Final K-Means (k = 3)
-# ==========================================================
 
 kmeans = KMeans(
     n_clusters=3,
@@ -76,9 +65,6 @@ clusters.to_csv(
     index=False
 )
 
-# ==========================================================
-# PCA visualisation
-# ==========================================================
 
 pca = PCA(n_components=2)
 
@@ -135,9 +121,6 @@ plt.show()
 
 plt.close()
 
-# ==========================================================
-# Average movement pattern
-# ==========================================================
 
 cluster_profiles = pd.DataFrame(
     index=normalised_prices.index
@@ -199,9 +182,6 @@ cluster_profiles.to_csv(
     )
 )
 
-# ==========================================================
-# Individual stock trajectories within each cluster
-# ==========================================================
 
 for cluster in sorted(clusters.Cluster.unique()):
 

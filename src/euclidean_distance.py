@@ -7,9 +7,6 @@ from scipy.cluster.hierarchy import dendrogram, linkage
 from sklearn.metrics import pairwise_distances
 
 
-# ============================================================
-# Configuration
-# ============================================================
 
 NORMALISED_DATA_PATH = "data/processed/normalised_prices.csv"
 PROCESSED_DATA_DIR = "data/processed"
@@ -19,9 +16,6 @@ os.makedirs(PROCESSED_DATA_DIR, exist_ok=True)
 os.makedirs(FIGURES_DIR, exist_ok=True)
 
 
-# ============================================================
-# Load cleaned normalised stock-price data
-# ============================================================
 
 normalised_prices = pd.read_csv(
     NORMALISED_DATA_PATH,
@@ -51,9 +45,6 @@ print(
 )
 
 
-# ============================================================
-# Validate the processed dataset
-# ============================================================
 
 missing_values = int(
     normalised_prices.isna().sum().sum()
@@ -88,12 +79,7 @@ if normalised_prices.empty:
 print("Dataset validation completed successfully.")
 
 
-# ============================================================
-# Prepare data for distance calculations
-# ============================================================
 
-# Rows must represent companies and columns must represent
-# observations across time.
 stock_series = normalised_prices.T
 
 print("\nClustering data shape:")
@@ -107,9 +93,7 @@ print(
 )
 
 
-# ============================================================
-# Calculate pairwise Euclidean distances
-# ============================================================
+
 
 euclidean_array = pairwise_distances(
     stock_series,
@@ -136,9 +120,7 @@ euclidean_distances.to_csv(
 )
 
 
-# ============================================================
-# Convert distance matrix into unique company pairs
-# ============================================================
+
 
 distance_matrix = euclidean_distances.rename_axis(
     index=None,
@@ -162,8 +144,6 @@ pairs = pairs[
     pairs["Stock 1"] != pairs["Stock 2"]
 ].copy()
 
-# Create a consistently ordered stock pair so that:
-# A-B and B-A are treated as the same pair.
 pairs["Pair"] = pairs.apply(
     lambda row: tuple(
         sorted(
@@ -202,9 +182,7 @@ if len(pairs) != expected_pairs:
     )
 
 
-# ============================================================
-# Find most similar and most dissimilar pairs
-# ============================================================
+
 
 closest_pairs = (
     pairs
@@ -249,9 +227,7 @@ furthest_pairs.to_csv(
 )
 
 
-# ============================================================
-# Summary statistics for pairwise distances
-# ============================================================
+
 
 distance_summary = pairs["Distance"].describe()
 
@@ -267,9 +243,7 @@ distance_summary.to_csv(
 )
 
 
-# ============================================================
-# Plot Euclidean-distance heatmap
-# ============================================================
+
 
 plt.figure(figsize=(16, 14))
 
@@ -319,9 +293,7 @@ plt.show()
 plt.close()
 
 
-# ============================================================
-# Hierarchical clustering using Ward linkage
-# ============================================================
+
 
 # Ward linkage is based on Euclidean geometry and therefore
 # should be used with Euclidean distance.
@@ -342,9 +314,6 @@ print(
 )
 
 
-# ============================================================
-# Plot dendrogram
-# ============================================================
 
 plt.figure(figsize=(20, 9))
 
@@ -374,9 +343,7 @@ plt.show()
 plt.close()
 
 
-# ============================================================
-# Save linkage matrix
-# ============================================================
+
 
 linkage_table = pd.DataFrame(
     linked,
@@ -394,9 +361,7 @@ linkage_table.to_csv(
 )
 
 
-# ============================================================
-# Final summary
-# ============================================================
+
 
 print("\n" + "=" * 60)
 print("ANALYSIS SUMMARY")

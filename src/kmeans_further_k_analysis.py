@@ -13,9 +13,6 @@ from sklearn.metrics import (
 )
 
 
-# ============================================================
-# Configuration
-# ============================================================
 
 DATA_PATH = "data/processed/normalised_prices.csv"
 
@@ -37,10 +34,6 @@ os.makedirs(
     exist_ok=True
 )
 
-
-# ============================================================
-# Load cleaned normalised prices
-# ============================================================
 
 normalised_prices = pd.read_csv(
     DATA_PATH,
@@ -80,10 +73,6 @@ print(
 )
 
 
-# ============================================================
-# Validate dataset
-# ============================================================
-
 if normalised_prices.empty:
     raise ValueError(
         "The normalised-price dataset is empty."
@@ -112,13 +101,6 @@ if not np.isfinite(
     )
 
 
-# ============================================================
-# Prepare clustering matrix
-# ============================================================
-
-# Rows = companies
-# Columns = trading days
-
 X = normalised_prices.T
 
 ticker_names = X.index.tolist()
@@ -128,14 +110,6 @@ print(
     f"{X.shape}"
 )
 
-
-# ============================================================
-# Fit PCA once
-# ============================================================
-
-# PCA is only used for visualisation.
-# Using the same PCA transformation for every k allows
-# direct visual comparison between cluster solutions.
 
 pca = PCA(
     n_components=2
@@ -167,20 +141,12 @@ print(
 )
 
 
-# ============================================================
-# Containers for comparison results
-# ============================================================
-
 comparison_rows = []
 
 all_assignments = []
 
 cluster_size_rows = []
 
-
-# ============================================================
-# Analyse each value of k
-# ============================================================
 
 for k in K_VALUES:
 
@@ -190,9 +156,6 @@ for k in K_VALUES:
     )
     print("=" * 80)
 
-    # --------------------------------------------------------
-    # Fit K-Means
-    # --------------------------------------------------------
 
     model = KMeans(
         n_clusters=k,
@@ -208,10 +171,6 @@ for k in K_VALUES:
         labels + 1
     )
 
-
-    # --------------------------------------------------------
-    # Cluster assignments
-    # --------------------------------------------------------
 
     assignments = pd.DataFrame({
         "Ticker": ticker_names,
@@ -244,10 +203,6 @@ for k in K_VALUES:
     )
 
 
-    # --------------------------------------------------------
-    # Cluster sizes
-    # --------------------------------------------------------
-
     cluster_sizes = (
         assignments[
             "Cluster"
@@ -274,9 +229,6 @@ for k in K_VALUES:
         })
 
 
-    # --------------------------------------------------------
-    # Print cluster memberships
-    # --------------------------------------------------------
 
     for cluster_number in sorted(
         assignments[
@@ -305,9 +257,6 @@ for k in K_VALUES:
         )
 
 
-    # --------------------------------------------------------
-    # Validation metrics
-    # --------------------------------------------------------
 
     silhouette = silhouette_score(
         X,
@@ -379,11 +328,6 @@ for k in K_VALUES:
         f"Singleton clusters: "
         f"{singleton_clusters}"
     )
-
-
-    # ========================================================
-    # PCA plot
-    # ========================================================
 
     plot_df = pd.DataFrame({
         "PC1": X_pca[:, 0],
@@ -473,10 +417,6 @@ for k in K_VALUES:
     plt.close()
 
 
-    # ========================================================
-    # Calculate mean cluster trajectories
-    # ========================================================
-
     cluster_profiles = pd.DataFrame(
         index=normalised_prices.index
     )
@@ -516,10 +456,6 @@ for k in K_VALUES:
         )
     )
 
-
-    # ========================================================
-    # Mean trajectory plot
-    # ========================================================
 
     plt.figure(
         figsize=(13, 7)
@@ -594,11 +530,6 @@ for k in K_VALUES:
 
     plt.show()
     plt.close()
-
-
-    # ========================================================
-    # Individual trajectories
-    # ========================================================
 
     for cluster_number in sorted(
         assignments[
@@ -695,10 +626,6 @@ for k in K_VALUES:
         plt.close()
 
 
-    # ========================================================
-    # Final values of cluster mean trajectories
-    # ========================================================
-
     print(
         "\nFinal normalised values "
         "of cluster means:"
@@ -721,10 +648,6 @@ for k in K_VALUES:
         )
 
 
-# ============================================================
-# Save combined cluster assignments
-# ============================================================
-
 combined_assignments = pd.concat(
     all_assignments,
     ignore_index=True
@@ -739,10 +662,6 @@ combined_assignments.to_csv(
 )
 
 
-# ============================================================
-# Save cluster-size information
-# ============================================================
-
 cluster_sizes_df = pd.DataFrame(
     cluster_size_rows
 )
@@ -755,10 +674,6 @@ cluster_sizes_df.to_csv(
     index=False
 )
 
-
-# ============================================================
-# Comparison table
-# ============================================================
 
 comparison_df = pd.DataFrame(
     comparison_rows
@@ -784,10 +699,6 @@ print(
     )
 )
 
-
-# ============================================================
-# Plot validation comparison
-# ============================================================
 
 plt.figure(
     figsize=(8, 5)
@@ -835,11 +746,6 @@ plt.savefig(
 
 plt.show()
 plt.close()
-
-
-# ============================================================
-# Cluster-size comparison
-# ============================================================
 
 plt.figure(
     figsize=(8, 5)
@@ -901,10 +807,6 @@ plt.show()
 plt.close()
 
 
-# ============================================================
-# Singleton comparison
-# ============================================================
-
 plt.figure(
     figsize=(8, 5)
 )
@@ -952,10 +854,6 @@ plt.savefig(
 plt.show()
 plt.close()
 
-
-# ============================================================
-# Final summary
-# ============================================================
 
 print("\n" + "=" * 100)
 print("HIGHER-k ANALYSIS COMPLETED")

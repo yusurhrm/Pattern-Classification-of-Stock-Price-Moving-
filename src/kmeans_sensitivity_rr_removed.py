@@ -12,10 +12,6 @@ from sklearn.metrics import (
 )
 
 
-# ============================================================
-# File paths
-# ============================================================
-
 DATA_PATH = "data/raw/ftse100_40_companies.csv"
 RESULTS_DIR = "results"
 FIGURES_DIR = "figures"
@@ -23,10 +19,6 @@ FIGURES_DIR = "figures"
 os.makedirs(RESULTS_DIR, exist_ok=True)
 os.makedirs(FIGURES_DIR, exist_ok=True)
 
-
-# ============================================================
-# Load the dataset
-# ============================================================
 
 data = pd.read_csv(
     DATA_PATH,
@@ -41,10 +33,6 @@ print(data.shape)
 print("\nColumn level names:")
 print(data.columns.names)
 
-
-# ============================================================
-# Extract adjusted closing prices
-# ============================================================
 
 prices = data.xs(
     "Adj Close",
@@ -74,10 +62,6 @@ print("\nCompanies included:")
 print(prices.columns.tolist())
 
 
-# ============================================================
-# Inspect missing values
-# ============================================================
-
 missing_before = prices.isna().sum()
 missing_before = missing_before[
     missing_before > 0
@@ -101,10 +85,6 @@ missing_before.rename(
     )
 )
 
-
-# ============================================================
-# Handle missing values
-# ============================================================
 
 # Forward-fill missing values using the previous available price.
 prices = prices.ffill()
@@ -168,10 +148,6 @@ if infinite_or_missing_companies:
     )
 
 
-# ============================================================
-# Normalise prices
-# ============================================================
-
 # Each stock begins at 1.
 normalised_prices = prices.div(
     prices.iloc[0],
@@ -209,24 +185,8 @@ normalised_prices.to_csv(
 )
 
 
-# ============================================================
-# Prepare data for K-Means
-# ============================================================
-
-# Before transposing:
-# Rows = dates
-# Columns = companies
-#
-# After transposing:
-# Rows = companies
-# Columns = daily normalised prices
-
 X = normalised_prices.T
 
-# ------------------------------------------------
-# Sensitivity analysis
-# Remove Rolls-Royce (RR.L)
-# ------------------------------------------------
 
 X = X.drop(index="RR.L")
 
@@ -259,10 +219,6 @@ if maximum_k < 2:
 
 k_values = range(2, maximum_k + 1)
 
-
-# ============================================================
-# Evaluate K-Means for different k values
-# ============================================================
 
 wcss_values = []
 silhouette_scores = []
@@ -312,9 +268,7 @@ for k in k_values:
     )
 
 
-# ============================================================
-# Create and save evaluation table
-# ============================================================
+
 
 results = pd.DataFrame({
     "k": list(k_values),
@@ -340,9 +294,6 @@ results.to_csv(
 )
 
 
-# ============================================================
-# Elbow method plot
-# ============================================================
 
 plt.figure(figsize=(8, 5))
 
@@ -384,10 +335,6 @@ plt.show()
 plt.close()
 
 
-# ============================================================
-# Silhouette score plot
-# ============================================================
-
 plt.figure(figsize=(8, 5))
 
 plt.plot(
@@ -428,9 +375,6 @@ plt.show()
 plt.close()
 
 
-# ============================================================
-# Davies-Bouldin index plot
-# ============================================================
 
 plt.figure(figsize=(8, 5))
 
@@ -471,10 +415,6 @@ plt.savefig(
 plt.show()
 plt.close()
 
-
-# ============================================================
-# Calinski-Harabasz index plot
-# ============================================================
 
 plt.figure(figsize=(8, 5))
 
@@ -552,9 +492,6 @@ print(
     )
 )
 
-# ============================================================
-# Inspect candidate K-Means solutions
-# ============================================================
 
 candidate_k_values = [2, 3, 4]
 

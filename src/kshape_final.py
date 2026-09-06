@@ -7,9 +7,6 @@ from tslearn.clustering import KShape
 from tslearn.preprocessing import TimeSeriesScalerMeanVariance
 from tslearn.metrics import cdist_dtw
 
-# ==========================================================
-# Directories
-# ==========================================================
 
 DATA_PATH = "data/processed/normalised_prices.csv"
 
@@ -19,9 +16,6 @@ RESULTS_DIR = "results"
 os.makedirs(FIGURES_DIR, exist_ok=True)
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
-# ==========================================================
-# Load cleaned normalised data
-# ==========================================================
 
 normalised_prices = pd.read_csv(
     DATA_PATH,
@@ -40,11 +34,7 @@ print(f"\nDataset shape: {normalised_prices.shape}")
 print(f"Companies: {normalised_prices.shape[1]}")
 print(f"Trading days: {normalised_prices.shape[0]}")
 
-# ==========================================================
-# Prepare data for K-Shape
-# ==========================================================
 
-# stocks x trading days
 X = normalised_prices.T.values
 
 # K-Shape expects:
@@ -60,9 +50,6 @@ X_scaled = TimeSeriesScalerMeanVariance(
 
 tickers = normalised_prices.columns.to_numpy()
 
-# ==========================================================
-# Inspect candidate values of k
-# ==========================================================
 
 K_VALUES = [2, 3, 4, 5, 6, 7, 8, 9, 10]
 
@@ -83,9 +70,6 @@ for k in K_VALUES:
 
     labels = model.fit_predict(X_scaled)
 
-    # ------------------------------------------------------
-    # Cluster assignments
-    # ------------------------------------------------------
 
     assignments = pd.DataFrame({
         "Ticker": tickers,
@@ -104,9 +88,6 @@ for k in K_VALUES:
         index=False
     )
 
-    # ------------------------------------------------------
-    # Cluster sizes
-    # ------------------------------------------------------
 
     cluster_sizes = (
         assignments
@@ -134,9 +115,6 @@ for k in K_VALUES:
         f"Singleton clusters: {singleton_clusters}"
     )
 
-    # ------------------------------------------------------
-    # Average ORIGINAL normalised trajectory
-    # ------------------------------------------------------
 
     cluster_profiles = pd.DataFrame(
         index=normalised_prices.index
@@ -157,9 +135,6 @@ for k in K_VALUES:
             members
         ].mean(axis=1)
 
-    # ------------------------------------------------------
-    # Plot all cluster means together
-    # ------------------------------------------------------
 
     plt.figure(figsize=(12, 6))
 
@@ -203,9 +178,6 @@ for k in K_VALUES:
     plt.show()
     plt.close()
 
-    # ------------------------------------------------------
-    # Individual trajectories for each cluster
-    # ------------------------------------------------------
 
     for cluster in sorted(
         assignments.Cluster.unique()
@@ -270,9 +242,6 @@ for k in K_VALUES:
         plt.show()
         plt.close()
 
-    # ------------------------------------------------------
-    # Save average profiles
-    # ------------------------------------------------------
 
     cluster_profiles.to_csv(
         os.path.join(
@@ -281,9 +250,6 @@ for k in K_VALUES:
         )
     )
 
-    # ------------------------------------------------------
-    # Summary
-    # ------------------------------------------------------
 
     summary_rows.append({
         "k": k,
@@ -293,9 +259,6 @@ for k in K_VALUES:
         "Inertia": model.inertia_
     })
 
-# ==========================================================
-# Save comparison table
-# ==========================================================
 
 summary = pd.DataFrame(summary_rows)
 

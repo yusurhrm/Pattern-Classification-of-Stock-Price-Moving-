@@ -12,10 +12,6 @@ from sklearn.metrics import (
 )
 
 
-# ============================================================
-# Configuration
-# ============================================================
-
 DATA_PATH = "data/processed/normalised_prices.csv"
 RESULTS_DIR = "results"
 FIGURES_DIR = "results/figures"
@@ -36,10 +32,6 @@ FINAL_K = 3
 os.makedirs(RESULTS_DIR, exist_ok=True)
 os.makedirs(FIGURES_DIR, exist_ok=True)
 
-
-# ============================================================
-# Load cleaned normalised price data
-# ============================================================
 
 normalised_prices = pd.read_csv(
     DATA_PATH,
@@ -68,10 +60,6 @@ print(
     f"{normalised_prices.shape[0]}"
 )
 
-
-# ============================================================
-# Validate input data
-# ============================================================
 
 if normalised_prices.empty:
     raise ValueError(
@@ -116,18 +104,6 @@ if constant_companies:
 print("Input validation completed successfully.")
 
 
-# ============================================================
-# Prepare data for K-Means
-# ============================================================
-
-# Before transposing:
-# rows = trading dates
-# columns = companies
-#
-# After transposing:
-# rows = companies
-# columns = normalised prices through time
-
 X = normalised_prices.T
 
 print("\nFinal clustering data shape:")
@@ -136,10 +112,6 @@ print(X.shape)
 print(f"Rows (companies): {X.shape[0]}")
 print(f"Columns (trading days): {X.shape[1]}")
 
-
-# ============================================================
-# Select valid k values
-# ============================================================
 
 maximum_k = min(
     MAX_K,
@@ -159,9 +131,6 @@ print("\nValues of k to evaluate:")
 print(k_values)
 
 
-# ============================================================
-# Evaluate K-Means across candidate k values
-# ============================================================
 
 evaluation_rows = []
 
@@ -221,9 +190,6 @@ for k in k_values:
     })
 
 
-# ============================================================
-# Save evaluation results
-# ============================================================
 
 results = pd.DataFrame(
     evaluation_rows
@@ -248,9 +214,6 @@ results.to_csv(
 )
 
 
-# ============================================================
-# Identify best k according to each metric
-# ============================================================
 
 best_silhouette_k = int(
     results.loc[
@@ -298,9 +261,6 @@ print(
 )
 
 
-# ============================================================
-# Save k-selection summary
-# ============================================================
 
 selection_summary = pd.DataFrame({
     "Method": [
@@ -341,10 +301,6 @@ print(
     )
 )
 
-
-# ============================================================
-# Elbow-method plot
-# ============================================================
 
 plt.figure(figsize=(8, 5))
 
@@ -393,10 +349,6 @@ plt.savefig(
 plt.show()
 plt.close()
 
-
-# ============================================================
-# Silhouette-score plot
-# ============================================================
 
 plt.figure(figsize=(8, 5))
 
@@ -452,10 +404,6 @@ plt.show()
 plt.close()
 
 
-# ============================================================
-# Davies-Bouldin plot
-# ============================================================
-
 plt.figure(figsize=(8, 5))
 
 plt.plot(
@@ -509,10 +457,6 @@ plt.savefig(
 plt.show()
 plt.close()
 
-
-# ============================================================
-# Calinski-Harabasz plot
-# ============================================================
 
 plt.figure(figsize=(8, 5))
 
@@ -568,10 +512,6 @@ plt.show()
 plt.close()
 
 
-# ============================================================
-# Plot cluster-size balance
-# ============================================================
-
 plt.figure(figsize=(8, 5))
 
 plt.plot(
@@ -626,10 +566,6 @@ plt.savefig(
 plt.show()
 plt.close()
 
-
-# ============================================================
-# Inspect candidate K-Means solutions
-# ============================================================
 
 candidate_k_values = sorted(
     set(
@@ -735,10 +671,6 @@ for k in candidate_k_values:
     )
 
 
-# ============================================================
-# Save combined candidate assignments
-# ============================================================
-
 combined_assignments = pd.concat(
     all_cluster_assignments,
     ignore_index=True
@@ -764,9 +696,6 @@ candidate_summary.to_csv(
     index=False
 )
 
-# ============================================================
-# Final summary
-# ============================================================
 
 print("\n" + "=" * 60)
 print("K-MEANS EVALUATION SUMMARY")

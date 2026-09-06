@@ -7,9 +7,6 @@ from scipy.cluster.hierarchy import dendrogram, linkage
 from sklearn.metrics import pairwise_distances
 
 
-# ============================================================
-# Configuration
-# ============================================================
 
 NORMALISED_DATA_PATH = "data/processed/normalised_prices.csv"
 PROCESSED_DATA_DIR = "data/processed"
@@ -18,10 +15,6 @@ FIGURES_DIR = "results/figures"
 os.makedirs(PROCESSED_DATA_DIR, exist_ok=True)
 os.makedirs(FIGURES_DIR, exist_ok=True)
 
-
-# ============================================================
-# Load cleaned normalised stock-price data
-# ============================================================
 
 normalised_prices = pd.read_csv(
     NORMALISED_DATA_PATH,
@@ -44,10 +37,6 @@ print(
 print(f"Number of companies: {normalised_prices.shape[1]}")
 print(f"Number of trading days: {normalised_prices.shape[0]}")
 
-
-# ============================================================
-# Validate the processed dataset
-# ============================================================
 
 missing_values = int(
     normalised_prices.isna().sum().sum()
@@ -82,10 +71,6 @@ if normalised_prices.empty:
 print("Dataset validation completed successfully.")
 
 
-# ============================================================
-# Prepare data for distance calculations
-# ============================================================
-
 # Rows = companies
 # Columns = trading days
 stock_series = normalised_prices.T
@@ -97,11 +82,7 @@ print(f"Rows (companies): {stock_series.shape[0]}")
 print(f"Columns (trading days): {stock_series.shape[1]}")
 
 
-# ============================================================
-# Calculate pairwise correlation distances
-# ============================================================
 
-# Correlation distance is defined as 1 - Pearson correlation.
 correlation_array = pairwise_distances(
     stock_series,
     metric="correlation"
@@ -127,9 +108,6 @@ correlation_distances.to_csv(
 )
 
 
-# ============================================================
-# Convert distance matrix into unique company pairs
-# ============================================================
 
 distance_matrix = correlation_distances.rename_axis(
     index=None,
@@ -188,10 +166,6 @@ if len(pairs) != expected_pairs:
     )
 
 
-# ============================================================
-# Find most similar and most dissimilar pairs
-# ============================================================
-
 closest_pairs = (
     pairs
     .nsmallest(10, "Distance")
@@ -235,9 +209,6 @@ furthest_pairs.to_csv(
 )
 
 
-# ============================================================
-# Summary statistics for correlation distances
-# ============================================================
 
 distance_summary = pairs["Distance"].describe()
 
@@ -253,9 +224,6 @@ distance_summary.to_csv(
 )
 
 
-# ============================================================
-# Plot correlation-distance heatmap
-# ============================================================
 
 plt.figure(figsize=(16, 14))
 
@@ -307,10 +275,6 @@ plt.show()
 plt.close()
 
 
-# ============================================================
-# Hierarchical clustering using average linkage
-# ============================================================
-
 # Ward linkage is not valid with correlation distance.
 # Average linkage is therefore used.
 linked = linkage(
@@ -330,9 +294,6 @@ print(
 )
 
 
-# ============================================================
-# Plot dendrogram
-# ============================================================
 
 plt.figure(figsize=(20, 9))
 
@@ -362,9 +323,7 @@ plt.show()
 plt.close()
 
 
-# ============================================================
-# Save linkage matrix
-# ============================================================
+
 
 linkage_table = pd.DataFrame(
     linked,
@@ -382,9 +341,6 @@ linkage_table.to_csv(
 )
 
 
-# ============================================================
-# Final summary
-# ============================================================
 
 print("\n" + "=" * 60)
 print("ANALYSIS SUMMARY")

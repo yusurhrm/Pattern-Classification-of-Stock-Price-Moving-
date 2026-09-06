@@ -9,10 +9,6 @@ from scipy.spatial.distance import squareform
 from tslearn.metrics import cdist_dtw
 
 
-# ============================================================
-# Configuration
-# ============================================================
-
 NORMALISED_DATA_PATH = "data/processed/normalised_prices.csv"
 PROCESSED_DATA_DIR = "data/processed"
 FIGURES_DIR = "results/figures"
@@ -20,10 +16,6 @@ FIGURES_DIR = "results/figures"
 os.makedirs(PROCESSED_DATA_DIR, exist_ok=True)
 os.makedirs(FIGURES_DIR, exist_ok=True)
 
-
-# ============================================================
-# Load cleaned normalised stock-price data
-# ============================================================
 
 normalised_prices = pd.read_csv(
     NORMALISED_DATA_PATH,
@@ -46,10 +38,6 @@ print(
 print(f"Number of companies: {normalised_prices.shape[1]}")
 print(f"Number of trading days: {normalised_prices.shape[0]}")
 
-
-# ============================================================
-# Validate the processed dataset
-# ============================================================
 
 missing_values = int(
     normalised_prices.isna().sum().sum()
@@ -84,10 +72,6 @@ if normalised_prices.empty:
 print("Dataset validation completed successfully.")
 
 
-# ============================================================
-# Prepare data for DTW
-# ============================================================
-
 # tslearn expects:
 # number of series × number of time steps × number of features
 #
@@ -108,10 +92,6 @@ print(f"Series: {stock_series_3d.shape[0]}")
 print(f"Time steps: {stock_series_3d.shape[1]}")
 print(f"Features: {stock_series_3d.shape[2]}")
 
-
-# ============================================================
-# Calculate pairwise DTW distances
-# ============================================================
 
 print("\nCalculating DTW distance matrix...")
 print(
@@ -153,10 +133,6 @@ dtw_distances.to_csv(
 )
 
 
-# ============================================================
-# Validate DTW matrix
-# ============================================================
-
 if not np.isfinite(dtw_array).all():
     raise ValueError(
         "The DTW distance matrix contains invalid values."
@@ -183,9 +159,6 @@ if not np.allclose(
 print("\nDTW matrix validation completed successfully.")
 
 
-# ============================================================
-# Convert distance matrix into unique stock pairs
-# ============================================================
 
 distance_matrix = dtw_distances.rename_axis(
     index=None,
@@ -244,9 +217,6 @@ if len(pairs) != expected_pairs:
     )
 
 
-# ============================================================
-# Find most similar and most dissimilar pairs
-# ============================================================
 
 closest_pairs = (
     pairs
@@ -291,10 +261,6 @@ furthest_pairs.to_csv(
 )
 
 
-# ============================================================
-# DTW distance summary
-# ============================================================
-
 distance_summary = pairs["Distance"].describe()
 
 print("\n" + "=" * 60)
@@ -309,9 +275,6 @@ distance_summary.to_csv(
 )
 
 
-# ============================================================
-# Plot DTW distance heatmap
-# ============================================================
 
 plt.figure(figsize=(16, 14))
 
@@ -357,9 +320,6 @@ plt.show()
 plt.close()
 
 
-# ============================================================
-# Hierarchical clustering from precomputed DTW distances
-# ============================================================
 
 # Convert the full square matrix into condensed form.
 condensed_dtw = squareform(
@@ -384,9 +344,6 @@ print(
 )
 
 
-# ============================================================
-# Plot DTW dendrogram
-# ============================================================
 
 plt.figure(figsize=(20, 9))
 
@@ -416,10 +373,6 @@ plt.show()
 plt.close()
 
 
-# ============================================================
-# Save linkage matrix
-# ============================================================
-
 linkage_table = pd.DataFrame(
     linked,
     columns=[
@@ -436,9 +389,6 @@ linkage_table.to_csv(
 )
 
 
-# ============================================================
-# Final summary
-# ============================================================
 
 print("\n" + "=" * 60)
 print("ANALYSIS SUMMARY")

@@ -9,10 +9,6 @@ from tslearn.preprocessing import TimeSeriesScalerMeanVariance
 from tslearn.clustering import silhouette_score
 
 
-# ============================================================
-# Configuration
-# ============================================================
-
 DATA_PATH = "data/processed/normalised_prices.csv"
 
 RESULTS_DIR = "results/kshape_evaluation"
@@ -34,11 +30,6 @@ os.makedirs(
     FIGURES_DIR,
     exist_ok=True
 )
-
-
-# ============================================================
-# Load cleaned normalised prices
-# ============================================================
 
 normalised_prices = pd.read_csv(
     DATA_PATH,
@@ -78,10 +69,6 @@ print(
 )
 
 
-# ============================================================
-# Validate dataset
-# ============================================================
-
 if normalised_prices.empty:
     raise ValueError(
         "The normalised-price dataset is empty."
@@ -114,18 +101,6 @@ print(
 )
 
 
-# ============================================================
-# Prepare K-Shape input
-# ============================================================
-
-# Before transposing:
-# rows = dates
-# columns = companies
-#
-# After transposing:
-# rows = companies
-# columns = time observations
-
 X_2d = normalised_prices.T.to_numpy()
 
 ticker_names = (
@@ -135,10 +110,6 @@ ticker_names = (
 print("\nOriginal clustering matrix:")
 print(X_2d.shape)
 
-
-# ============================================================
-# Convert to tslearn format
-# ============================================================
 
 # tslearn requires:
 #
@@ -153,10 +124,6 @@ X = X_2d[:, :, np.newaxis]
 print("\nK-Shape input shape:")
 print(X.shape)
 
-
-# ============================================================
-# Z-normalise each time series
-# ============================================================
 
 # K-Shape is designed to compare the shape of time series.
 # Each series is therefore transformed to mean = 0 and
@@ -180,10 +147,6 @@ print(
     f"{X_scaled.shape}"
 )
 
-
-# ============================================================
-# Evaluate candidate values of k
-# ============================================================
 
 evaluation_rows = []
 assignment_rows = []
@@ -222,9 +185,6 @@ for k in k_values:
         X_scaled
     )
 
-    # --------------------------------------------------------
-    # Cluster sizes
-    # --------------------------------------------------------
 
     cluster_sizes = (
         pd.Series(labels)
@@ -247,24 +207,11 @@ for k in k_values:
     )
 
 
-    # --------------------------------------------------------
-    # K-Shape inertia
-    # --------------------------------------------------------
 
     inertia = float(
         model.inertia_
     )
 
-
-    # --------------------------------------------------------
-    # Silhouette score
-    # --------------------------------------------------------
-
-    # tslearn silhouette_score can use a time-series-specific
-    # metric. DTW is used here as an independent measure of
-    # how well the resulting groups separate.
-    #
-    # Higher values indicate stronger separation.
 
     silhouette = silhouette_score(
         X_scaled,
@@ -272,11 +219,6 @@ for k in k_values:
         metric="dtw",
         n_jobs=-1
     )
-
-
-    # --------------------------------------------------------
-    # Save evaluation result
-    # --------------------------------------------------------
 
     evaluation_rows.append({
         "k": k,
@@ -293,9 +235,6 @@ for k in k_values:
     })
 
 
-    # --------------------------------------------------------
-    # Save assignments
-    # --------------------------------------------------------
 
     for ticker, label in zip(
         ticker_names,
@@ -311,9 +250,7 @@ for k in k_values:
         })
 
 
-    # --------------------------------------------------------
-    # Print cluster sizes
-    # --------------------------------------------------------
+
 
     print(
         f"\nK-Shape inertia: "
@@ -345,9 +282,6 @@ for k in k_values:
     )
 
 
-# ============================================================
-# Convert results to DataFrames
-# ============================================================
 
 evaluation_df = pd.DataFrame(
     evaluation_rows
@@ -357,10 +291,6 @@ assignments_df = pd.DataFrame(
     assignment_rows
 )
 
-
-# ============================================================
-# Save evaluation results
-# ============================================================
 
 evaluation_df.to_csv(
     os.path.join(
@@ -378,10 +308,6 @@ assignments_df.to_csv(
     index=False
 )
 
-
-# ============================================================
-# Identify best k by silhouette
-# ============================================================
 
 best_silhouette_index = (
     evaluation_df[
@@ -404,10 +330,6 @@ best_silhouette_value = float(
     ]
 )
 
-
-# ============================================================
-# Print evaluation table
-# ============================================================
 
 print("\n" + "=" * 100)
 print("K-SHAPE EVALUATION RESULTS")
@@ -434,9 +356,6 @@ print(
 )
 
 
-# ============================================================
-# Plot K-Shape inertia
-# ============================================================
 
 plt.figure(
     figsize=(8, 5)
@@ -485,10 +404,6 @@ plt.savefig(
 plt.show()
 plt.close()
 
-
-# ============================================================
-# Plot silhouette scores
-# ============================================================
 
 plt.figure(
     figsize=(8, 5)
@@ -547,10 +462,6 @@ plt.savefig(
 plt.show()
 plt.close()
 
-
-# ============================================================
-# Plot cluster-size balance
-# ============================================================
 
 plt.figure(
     figsize=(8, 5)
@@ -611,10 +522,6 @@ plt.show()
 plt.close()
 
 
-# ============================================================
-# Plot singleton clusters
-# ============================================================
-
 plt.figure(
     figsize=(8, 5)
 )
@@ -661,10 +568,6 @@ plt.savefig(
 plt.show()
 plt.close()
 
-
-# ============================================================
-# Print candidate cluster memberships
-# ============================================================
 
 candidate_k_values = [
     2,
@@ -732,10 +635,6 @@ for k in candidate_k_values:
             members
         )
 
-
-# ============================================================
-# Final summary
-# ============================================================
 
 print("\n" + "=" * 100)
 print("K-SHAPE EVALUATION COMPLETED")

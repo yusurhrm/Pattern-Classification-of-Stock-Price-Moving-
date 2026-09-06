@@ -11,9 +11,6 @@ from sklearn.metrics import (
 )
 
 
-# ============================================================
-# File paths and settings
-# ============================================================
 
 # Cleaned and normalised dataset containing the 98 companies
 # retained from the FTSE 100 dataset.
@@ -36,9 +33,6 @@ os.makedirs(RESULTS_DIR, exist_ok=True)
 os.makedirs(FIGURES_DIR, exist_ok=True)
 
 
-# ============================================================
-# Load cleaned normalised stock-price data
-# ============================================================
 
 normalised_prices = pd.read_csv(
     DATA_PATH,
@@ -71,9 +65,6 @@ print(
 )
 
 
-# ============================================================
-# Validate input data
-# ============================================================
 
 if normalised_prices.empty:
     raise ValueError(
@@ -125,17 +116,7 @@ if constant_companies:
 print("Input validation completed successfully.")
 
 
-# ============================================================
-# Prepare data for clustering
-# ============================================================
 
-# Before transposing:
-# rows = trading dates
-# columns = companies
-#
-# After transposing:
-# rows = companies
-# columns = normalised prices across time
 
 X = normalised_prices.T
 
@@ -150,9 +131,6 @@ print(
 )
 
 
-# ============================================================
-# Select valid values of k
-# ============================================================
 
 maximum_k = min(
     MAX_CLUSTERS,
@@ -175,9 +153,6 @@ print("\nValues of k to evaluate:")
 print(k_values)
 
 
-# ============================================================
-# Evaluate hierarchical clustering
-# ============================================================
 
 evaluation_results = []
 cluster_size_results = []
@@ -340,9 +315,7 @@ for linkage_method in LINKAGE_METHODS:
         )
 
 
-# ============================================================
-# Convert results to DataFrames
-# ============================================================
+
 
 evaluation_df = pd.DataFrame(
     evaluation_results
@@ -362,9 +335,6 @@ if evaluation_df.empty:
     )
 
 
-# ============================================================
-# Save full results
-# ============================================================
 
 evaluation_path = os.path.join(
     RESULTS_DIR,
@@ -397,9 +367,6 @@ cluster_assignments_df.to_csv(
 )
 
 
-# ============================================================
-# Save linkage matrices
-# ============================================================
 
 for (
     linkage_method,
@@ -425,9 +392,6 @@ for (
     )
 
 
-# ============================================================
-# Identify best result for each linkage method
-# ============================================================
 
 best_by_silhouette = (
     evaluation_df
@@ -516,10 +480,6 @@ best_by_calinski_harabasz.to_csv(
     index=False,
 )
 
-
-# ============================================================
-# Identify overall metric optima
-# ============================================================
 
 overall_best_silhouette = evaluation_df.loc[
     evaluation_df[
@@ -610,9 +570,6 @@ overall_metric_summary.to_csv(
 )
 
 
-# ============================================================
-# Calculate overall rankings
-# ============================================================
 
 # Higher silhouette score is better.
 evaluation_df["Silhouette Rank"] = (
@@ -683,16 +640,13 @@ ranked_results.to_csv(
     index=False,
 )
 
-# Save the evaluation file again with the ranking columns.
+
 evaluation_df.to_csv(
     evaluation_path,
     index=False,
 )
 
 
-# ============================================================
-# Create cluster-balance score
-# ============================================================
 
 evaluation_df["Cluster Size Ratio"] = (
     evaluation_df[
@@ -722,10 +676,6 @@ cluster_balance_df.to_csv(
     index=False,
 )
 
-
-# ============================================================
-# Plot 1: Silhouette scores
-# ============================================================
 
 plt.figure(
     figsize=(10, 6)
@@ -787,9 +737,6 @@ plt.show()
 plt.close()
 
 
-# ============================================================
-# Plot 2: Davies-Bouldin indices
-# ============================================================
 
 plt.figure(
     figsize=(10, 6)
@@ -851,9 +798,6 @@ plt.show()
 plt.close()
 
 
-# ============================================================
-# Plot 3: Calinski-Harabasz indices
-# ============================================================
 
 plt.figure(
     figsize=(10, 6)
@@ -915,9 +859,6 @@ plt.show()
 plt.close()
 
 
-# ============================================================
-# Plot 4: Number of singleton clusters
-# ============================================================
 
 plt.figure(
     figsize=(10, 6)
@@ -979,9 +920,6 @@ plt.show()
 plt.close()
 
 
-# ============================================================
-# Plot 5: Smallest cluster sizes
-# ============================================================
 
 plt.figure(
     figsize=(10, 6)
@@ -1043,9 +981,6 @@ plt.show()
 plt.close()
 
 
-# ============================================================
-# Plot 6: Largest cluster sizes
-# ============================================================
 
 plt.figure(
     figsize=(10, 6)
@@ -1107,9 +1042,6 @@ plt.show()
 plt.close()
 
 
-# ============================================================
-# Save separate results for each linkage method
-# ============================================================
 
 for linkage_method in LINKAGE_METHODS:
 
@@ -1133,9 +1065,6 @@ for linkage_method in LINKAGE_METHODS:
     )
 
 
-# ============================================================
-# Save candidate assignments for k = 2, 3 and 4
-# ============================================================
 
 candidate_k_values = [
     k
@@ -1163,9 +1092,6 @@ candidate_assignments_df.to_csv(
 )
 
 
-# ============================================================
-# Create candidate-cluster summary
-# ============================================================
 
 candidate_summary = (
     evaluation_df.loc[
@@ -1205,9 +1131,6 @@ candidate_summary.to_csv(
 )
 
 
-# ============================================================
-# Print full evaluation results
-# ============================================================
 
 print("\n" + "=" * 100)
 print("FULL HIERARCHICAL EVALUATION RESULTS")
@@ -1239,9 +1162,6 @@ print(
 )
 
 
-# ============================================================
-# Print best results for each linkage
-# ============================================================
 
 print("\n" + "=" * 100)
 print("BEST RESULT FOR EACH LINKAGE: SILHOUETTE SCORE")
@@ -1309,10 +1229,6 @@ print(
 )
 
 
-# ============================================================
-# Print overall metric optima
-# ============================================================
-
 print("\n" + "=" * 100)
 print("OVERALL BEST RESULT FOR EACH METRIC")
 print("=" * 100)
@@ -1324,9 +1240,6 @@ print(
 )
 
 
-# ============================================================
-# Print top-ranked results
-# ============================================================
 
 print("\n" + "=" * 100)
 print("TOP 10 OVERALL RESULTS BY MEAN METRIC RANK")
@@ -1353,9 +1266,6 @@ print(
 )
 
 
-# ============================================================
-# Print cluster memberships for k = 2, 3 and 4
-# ============================================================
 
 for linkage_method in LINKAGE_METHODS:
 
@@ -1427,9 +1337,6 @@ for linkage_method in LINKAGE_METHODS:
             print(tickers)
 
 
-# ============================================================
-# Final validation
-# ============================================================
 
 expected_combinations = (
     len(LINKAGE_METHODS)
@@ -1475,9 +1382,6 @@ print(
 )
 
 
-# ============================================================
-# Finished
-# ============================================================
 
 print("\n" + "=" * 100)
 print("HIERARCHICAL EVALUATION COMPLETED")
@@ -1542,3 +1446,101 @@ for filename in saved_figure_files:
             filename,
         )
     )
+
+
+
+ward_k3 = cluster_assignments_df[
+    (cluster_assignments_df["Linkage"] == "ward") &
+    (cluster_assignments_df["k"] == 3)
+].copy()
+
+# Calculate mean trajectory of each Ward cluster
+ward_cluster_means = {}
+
+for cluster in sorted(ward_k3["Cluster"].unique()):
+
+    tickers = ward_k3.loc[
+        ward_k3["Cluster"] == cluster,
+        "Ticker"
+    ].tolist()
+
+    ward_cluster_means[cluster] = (
+        normalised_prices[tickers].mean(axis=1)
+    )
+
+
+# Compare PSH and BGEO with every Ward cluster mean
+stocks_to_check = ["PSH.L", "BGEO.L"]
+
+for ticker in stocks_to_check:
+
+    print("\n" + "=" * 70)
+    print(f"ANALYSIS FOR {ticker}")
+    print("=" * 70)
+
+    stock = normalised_prices[ticker]
+
+    assigned_cluster = ward_k3.loc[
+        ward_k3["Ticker"] == ticker,
+        "Cluster"
+    ].iloc[0]
+
+    print(f"Ward k=3 cluster: {assigned_cluster}")
+
+    for cluster, mean_trajectory in ward_cluster_means.items():
+
+        euclidean_distance = np.linalg.norm(
+            stock.to_numpy() -
+            mean_trajectory.to_numpy()
+        )
+
+        correlation = stock.corr(mean_trajectory)
+
+        print(
+            f"Cluster {cluster}: "
+            f"Euclidean distance = {euclidean_distance:.4f}, "
+            f"Correlation = {correlation:.4f}"
+        )
+
+
+
+for ticker in stocks_to_check:
+
+    plt.figure(figsize=(10, 6))
+
+    # Plot Ward cluster means
+    for cluster, mean_trajectory in ward_cluster_means.items():
+
+        plt.plot(
+            mean_trajectory.index,
+            mean_trajectory,
+            linewidth=2,
+            label=f"Ward Cluster {cluster} mean"
+        )
+
+    # Plot stock
+    plt.plot(
+        normalised_prices.index,
+        normalised_prices[ticker],
+        linewidth=3,
+        linestyle="--",
+        label=ticker
+    )
+
+    plt.axhline(
+        y=1,
+        linestyle=":",
+        alpha=0.5
+    )
+
+    plt.xlabel("Date")
+    plt.ylabel("Normalised Price")
+    plt.title(
+        f"{ticker}: Comparison with Ward k=3 Cluster Means"
+    )
+
+    plt.legend()
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+
+    plt.show()

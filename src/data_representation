@@ -5,9 +5,6 @@ import numpy as np
 import pandas as pd
 
 
-# ============================================================
-# Configuration
-# ============================================================
 
 RAW_DATA_PATH = "data/raw/ftse100_100_companies.csv"
 PROCESSED_DATA_DIR = "data/processed"
@@ -20,10 +17,6 @@ MISSING_THRESHOLD_PERCENT = 5.0
 os.makedirs(PROCESSED_DATA_DIR, exist_ok=True)
 os.makedirs(FIGURES_DIR, exist_ok=True)
 
-
-# ============================================================
-# Load raw dataset
-# ============================================================
 
 data = pd.read_csv(
     RAW_DATA_PATH,
@@ -52,9 +45,6 @@ print(f"Date range: {prices.index.min()} to {prices.index.max()}")
 print(f"Original number of companies: {prices.shape[1]}")
 
 
-# ============================================================
-# Examine missing values
-# ============================================================
 
 missing_days = prices.isna().sum()
 missing_percentage = prices.isna().mean() * 100
@@ -78,9 +68,6 @@ print(
 )
 
 
-# ============================================================
-# Exclude companies with excessive missing data
-# ============================================================
 
 excluded_companies = missing_summary[
     missing_summary["Missing Percentage"]
@@ -113,10 +100,6 @@ print(
     f"{prices.shape[1]}"
 )
 
-
-# ============================================================
-# Fill small remaining gaps
-# ============================================================
 
 remaining_missing_before = int(
     prices.isna().sum().sum()
@@ -162,9 +145,6 @@ if remaining_missing_after > 0:
 print(f"Final cleaned price shape: {prices.shape}")
 
 
-# ============================================================
-# Save missing-data reports
-# ============================================================
 
 missing_summary.to_csv(
     f"{PROCESSED_DATA_DIR}/missing_value_summary.csv"
@@ -179,9 +159,6 @@ excluded_report.to_csv(
 )
 
 
-# ============================================================
-# Select representative companies for plots
-# ============================================================
 
 sample_companies = [
     "LLOY.L",   # Banking
@@ -202,9 +179,6 @@ print("\nRepresentative companies used in figures:")
 print(sample_companies)
 
 
-# ============================================================
-# Representation 1: Adjusted closing prices
-# ============================================================
 
 print("\nRepresentation 1: Adjusted closing prices")
 
@@ -236,9 +210,6 @@ plt.show()
 plt.close()
 
 
-# ============================================================
-# Representation 2: Starting-value normalised prices
-# ============================================================
 
 print(
     "\nRepresentation 2: Starting-value normalised prices"
@@ -301,9 +272,6 @@ plt.show()
 plt.close()
 
 
-# ============================================================
-# Representation 3: Daily percentage returns
-# ============================================================
 
 print("\nRepresentation 3: Daily percentage returns")
 
@@ -348,10 +316,6 @@ plt.savefig(
 plt.show()
 plt.close()
 
-
-# ============================================================
-# Representation 4: Log returns
-# ============================================================
 
 print("\nRepresentation 4: Daily log returns")
 
@@ -409,9 +373,6 @@ plt.show()
 plt.close()
 
 
-# ============================================================
-# Compare raw and normalised prices directly
-# ============================================================
 
 comparison_companies = [
     company
@@ -494,10 +455,6 @@ if len(comparison_companies) == 2:
     plt.close()
 
 
-# ============================================================
-# Statistical comparison of percentage and log returns
-# ============================================================
-
 daily_returns_stacked = (
     daily_returns
     .stack()
@@ -543,10 +500,6 @@ print("=" * 60)
 print(return_comparison)
 
 
-# ============================================================
-# Distribution of daily percentage returns
-# ============================================================
-
 plt.figure(figsize=(10, 6))
 
 plt.hist(
@@ -571,9 +524,6 @@ plt.show()
 plt.close()
 
 
-# ============================================================
-# Distribution of log returns
-# ============================================================
 
 plt.figure(figsize=(10, 6))
 
@@ -599,10 +549,6 @@ plt.show()
 plt.close()
 
 
-# ============================================================
-# Similarity between percentage and log returns
-# ============================================================
-
 common_values = pd.concat(
     [
         daily_returns.stack().rename(
@@ -625,9 +571,6 @@ print("\nCorrelation between daily percentage and log returns:")
 print(f"{return_correlation:.6f}")
 
 
-# ============================================================
-# Save processed representations
-# ============================================================
 
 prices.to_csv(
     f"{PROCESSED_DATA_DIR}/cleaned_adjusted_prices.csv"
@@ -650,9 +593,6 @@ return_comparison.to_csv(
 )
 
 
-# ============================================================
-# Final validation and summary
-# ============================================================
 
 print("\n" + "=" * 60)
 print("FINAL DATASET SUMMARY")

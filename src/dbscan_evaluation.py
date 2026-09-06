@@ -10,9 +10,6 @@ from sklearn.metrics import silhouette_score
 from sklearn.neighbors import NearestNeighbors
 
 
-# ============================================================
-# Configuration
-# ============================================================
 
 DATA_PATH = "data/processed/normalised_prices.csv"
 
@@ -23,9 +20,6 @@ os.makedirs(RESULTS_DIR, exist_ok=True)
 os.makedirs(FIGURES_DIR, exist_ok=True)
 
 
-# ============================================================
-# Load cleaned normalised data
-# ============================================================
 
 normalised_prices = pd.read_csv(
     DATA_PATH,
@@ -52,9 +46,6 @@ print(f"Number of companies: {normalised_prices.shape[1]}")
 print(f"Trading days: {normalised_prices.shape[0]}")
 
 
-# ============================================================
-# Validate dataset
-# ============================================================
 
 if normalised_prices.empty:
     raise ValueError(
@@ -83,17 +74,6 @@ if not np.isfinite(
 print("\nInput validation completed successfully.")
 
 
-# ============================================================
-# Prepare clustering matrix
-# ============================================================
-
-# Before transposing:
-# rows = dates
-# columns = companies
-#
-# After transposing:
-# rows = companies
-# columns = daily normalised prices
 
 X_original = normalised_prices.T
 
@@ -102,10 +82,6 @@ ticker_names = X_original.index.tolist()
 print("\nOriginal clustering matrix:")
 print(X_original.shape)
 
-
-# ============================================================
-# PCA dimensionality reduction
-# ============================================================
 
 # Retain enough principal components to explain at least 95%
 # of the variance.
@@ -161,8 +137,6 @@ print(
 )
 
 
-# Save PCA summary
-
 pca_summary = pd.DataFrame({
     "Principal Component": np.arange(
         1,
@@ -185,9 +159,6 @@ pca_summary.to_csv(
 )
 
 
-# ============================================================
-# Plot cumulative PCA variance
-# ============================================================
 
 plt.figure(
     figsize=(8, 5)
@@ -244,10 +215,6 @@ plt.show()
 plt.close()
 
 
-# ============================================================
-# k-distance plots
-# ============================================================
-
 # Several min_samples values are examined because DBSCAN
 # results can be sensitive to this parameter.
 
@@ -295,10 +262,6 @@ for min_samples in MIN_SAMPLES_VALUES:
     ] = kth_distances
 
 
-    # --------------------------------------------------------
-    # Plot individual k-distance graph
-    # --------------------------------------------------------
-
     plt.figure(
         figsize=(8, 5)
     )
@@ -344,9 +307,6 @@ for min_samples in MIN_SAMPLES_VALUES:
     plt.close()
 
 
-# ============================================================
-# Save k-distance values
-# ============================================================
 
 k_distance_df = pd.DataFrame(
     {
@@ -365,10 +325,6 @@ k_distance_df.to_csv(
     index=False
 )
 
-
-# ============================================================
-# Automatically create candidate eps values
-# ============================================================
 
 # Rather than manually choosing only one elbow value,
 # evaluate a broad range derived from the k-distance curves.
@@ -418,10 +374,6 @@ print(
     f"{len(EPS_VALUES)}"
 )
 
-
-# ============================================================
-# Evaluate DBSCAN parameter combinations
-# ============================================================
 
 evaluation_rows = []
 
@@ -498,9 +450,6 @@ for min_samples in MIN_SAMPLES_VALUES:
             singleton_clusters = 0
 
 
-        # ----------------------------------------------------
-        # Silhouette Score
-        # ----------------------------------------------------
 
         silhouette = np.nan
 
@@ -556,7 +505,6 @@ for min_samples in MIN_SAMPLES_VALUES:
         })
 
 
-        # Save assignments for later inspection
 
         for ticker, label in zip(
             ticker_names,
@@ -573,10 +521,6 @@ for min_samples in MIN_SAMPLES_VALUES:
                     int(label)
             })
 
-
-# ============================================================
-# Convert evaluation results to DataFrame
-# ============================================================
 
 evaluation_df = pd.DataFrame(
     evaluation_rows
@@ -603,15 +547,7 @@ assignments_df.to_csv(
 )
 
 
-# ============================================================
-# Keep useful candidate solutions
-# ============================================================
 
-# Require:
-# - at least 2 clusters
-# - no more than 10 clusters
-# - at least 50% of observations assigned to clusters
-# - a valid silhouette score
 
 candidate_df = evaluation_df.loc[
     (
@@ -640,9 +576,6 @@ candidate_df = evaluation_df.loc[
 ].copy()
 
 
-# ============================================================
-# Rank candidate solutions
-# ============================================================
 
 if not candidate_df.empty:
 
@@ -725,10 +658,6 @@ if not candidate_df.empty:
     )
 
 
-# ============================================================
-# Print full evaluation summary
-# ============================================================
-
 print("\n" + "=" * 100)
 print("DBSCAN EVALUATION RESULTS")
 print("=" * 100)
@@ -752,9 +681,6 @@ print(
 )
 
 
-# ============================================================
-# Print strongest candidate solutions
-# ============================================================
 
 print("\n" + "=" * 100)
 print("TOP DBSCAN CANDIDATE SOLUTIONS")
@@ -790,10 +716,6 @@ else:
         )
     )
 
-
-# ============================================================
-# Plot silhouette score by eps
-# ============================================================
 
 plt.figure(
     figsize=(10, 6)
@@ -850,9 +772,6 @@ plt.show()
 plt.close()
 
 
-# ============================================================
-# Plot number of clusters by eps
-# ============================================================
 
 plt.figure(
     figsize=(10, 6)
@@ -909,9 +828,6 @@ plt.show()
 plt.close()
 
 
-# ============================================================
-# Plot noise percentage by eps
-# ============================================================
 
 plt.figure(
     figsize=(10, 6)
@@ -967,10 +883,6 @@ plt.savefig(
 plt.show()
 plt.close()
 
-
-# ============================================================
-# Final summary
-# ============================================================
 
 print("\n" + "=" * 100)
 print("DBSCAN EVALUATION COMPLETED")

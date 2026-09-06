@@ -4,10 +4,6 @@ import numpy as np
 import pandas as pd
 
 
-# ============================================================
-# File paths
-# ============================================================
-
 NORMALISED_DATA_PATH = "data/processed/normalised_prices.csv"
 CLUSTERS_PATH = "results/kmeans_final_clusters.csv"
 RESULTS_DIR = "results"
@@ -15,21 +11,13 @@ RESULTS_DIR = "results"
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
 
-# ============================================================
-# Cluster names
-# ============================================================
 
-# These names match the final k = 3 solution for 98 companies.
 CLUSTER_NAMES = {
     1: "Stable or Modest Growth",
     2: "Exceptional Growth",
     3: "Strong Sustained Growth",
 }
 
-
-# ============================================================
-# Cluster interpretations
-# ============================================================
 
 INTERPRETATION_MAP = {
     1: (
@@ -47,11 +35,6 @@ INTERPRETATION_MAP = {
 }
 
 
-# ============================================================
-# Sector classifications
-# ============================================================
-
-# Broad sector classifications used for cluster interpretation.
 SECTOR_MAP = {
     "AAF.L": "Telecommunications",
     "AAL.L": "Mining",
@@ -174,10 +157,6 @@ SECTOR_MAP = {
 }
 
 
-# ============================================================
-# Load cleaned normalised stock-price data
-# ============================================================
-
 normalised_prices = pd.read_csv(
     NORMALISED_DATA_PATH,
     index_col=0,
@@ -199,10 +178,6 @@ print(
 print(f"Number of companies: {normalised_prices.shape[1]}")
 print(f"Number of trading days: {normalised_prices.shape[0]}")
 
-
-# ============================================================
-# Validate normalised dataset
-# ============================================================
 
 if normalised_prices.empty:
     raise ValueError(
@@ -228,13 +203,6 @@ if not np.isfinite(
     )
 
 
-# ============================================================
-# Reconstruct adjusted-price ratios and daily returns
-# ============================================================
-
-# The processed file contains prices normalised to 1.
-# Percentage returns and growth statistics can therefore be
-# calculated directly from the normalised trajectories.
 
 prices = normalised_prices.copy()
 
@@ -242,10 +210,6 @@ daily_returns = prices.pct_change(
     fill_method=None
 )
 
-
-# ============================================================
-# Load final K-Means cluster assignments
-# ============================================================
 
 clusters = pd.read_csv(
     CLUSTERS_PATH
@@ -290,10 +254,6 @@ print(
 )
 
 
-# ============================================================
-# Add cluster names and sectors
-# ============================================================
-
 clusters["Cluster Name"] = (
     clusters["Cluster"]
     .map(CLUSTER_NAMES)
@@ -304,10 +264,6 @@ clusters["Sector"] = (
     .map(SECTOR_MAP)
 )
 
-
-# ============================================================
-# Validate ticker and sector information
-# ============================================================
 
 missing_price_tickers = sorted(
     set(clusters["Ticker"])
@@ -365,10 +321,6 @@ if missing_sector_tickers:
 print("\nTicker and sector validation completed successfully.")
 
 
-# ============================================================
-# Calculate study duration
-# ============================================================
-
 TRADING_DAYS_PER_YEAR = 252
 
 study_years = (
@@ -377,10 +329,6 @@ study_years = (
 
 print(f"\nApproximate study duration: {study_years:.2f} years")
 
-
-# ============================================================
-# Calculate company-level statistics
-# ============================================================
 
 company_statistics = []
 
@@ -450,10 +398,6 @@ company_statistics = pd.DataFrame(
 )
 
 
-# ============================================================
-# Combine company, sector and cluster information
-# ============================================================
-
 company_profiles = clusters.merge(
     company_statistics,
     on="Ticker",
@@ -475,10 +419,6 @@ company_profiles.to_csv(
     index=False,
 )
 
-
-# ============================================================
-# Calculate cluster-level statistics
-# ============================================================
 
 cluster_statistics = (
     company_profiles
@@ -534,10 +474,6 @@ cluster_statistics = (
 )
 
 
-# ============================================================
-# Calculate sector composition
-# ============================================================
-
 sector_counts = (
     company_profiles
     .groupby(
@@ -566,10 +502,6 @@ sector_counts = sector_counts.sort_values(
 )
 
 
-# ============================================================
-# Calculate sector percentages within each cluster
-# ============================================================
-
 cluster_company_counts = (
     company_profiles
     .groupby("Cluster")
@@ -591,9 +523,6 @@ sector_counts["Cluster Percentage"] = (
 )
 
 
-# ============================================================
-# Identify dominant sector in each cluster
-# ============================================================
 
 dominant_sectors = (
     sector_counts
@@ -629,9 +558,6 @@ cluster_statistics["Interpretation"] = (
 )
 
 
-# ============================================================
-# TABLE 1: Concise cluster summary
-# ============================================================
 
 cluster_summary_table = cluster_statistics[
     [
@@ -678,10 +604,6 @@ cluster_summary_table.to_csv(
     index=False,
 )
 
-
-# ============================================================
-# TABLE 2: Financial characteristics
-# ============================================================
 
 financial_characteristics_table = (
     cluster_statistics[
@@ -753,11 +675,6 @@ financial_characteristics_table.to_csv(
     index=False,
 )
 
-
-# ============================================================
-# TABLE 3: Sector composition
-# ============================================================
-
 sector_breakdowns = []
 
 for cluster_number in sorted(
@@ -804,9 +721,6 @@ sector_composition_table.to_csv(
 )
 
 
-# ============================================================
-# TABLE 4: Companies in each cluster
-# ============================================================
 
 company_lists = (
     company_profiles
@@ -835,10 +749,6 @@ company_lists.to_csv(
 )
 
 
-# ============================================================
-# Sector pivot table
-# ============================================================
-
 sector_pivot = pd.pivot_table(
     company_profiles,
     index=[
@@ -859,10 +769,6 @@ sector_pivot.to_csv(
 )
 
 
-# ============================================================
-# Save full cluster statistics
-# ============================================================
-
 cluster_statistics.to_csv(
     os.path.join(
         RESULTS_DIR,
@@ -879,10 +785,6 @@ sector_counts.to_csv(
     index=False,
 )
 
-
-# ============================================================
-# Print results
-# ============================================================
 
 print("\n" + "=" * 70)
 print("TABLE 1: CLUSTER SUMMARY")
@@ -924,11 +826,6 @@ print(
     )
 )
 
-
-# ============================================================
-# Final validation
-# ============================================================
-
 expected_companies = normalised_prices.shape[1]
 profiled_companies = len(company_profiles)
 
@@ -942,11 +839,6 @@ print(
     f"\nSuccessfully profiled all "
     f"{profiled_companies} companies."
 )
-
-
-# ============================================================
-# Finished
-# ============================================================
 
 print("\nCluster profiling completed successfully.")
 

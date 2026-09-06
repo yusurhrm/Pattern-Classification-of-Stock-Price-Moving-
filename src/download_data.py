@@ -4,22 +4,12 @@ import pandas as pd
 import yfinance as yf
 
 
-# --------------------------------------------------
-# File paths
-# --------------------------------------------------
-
-# Project root:
-# Pattern-Classification-of-Stock-Price-Moving-/
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 MAPPING_FILE = PROJECT_ROOT / "data" / "ftse100_ticker_mapping.xlsx"
 OUTPUT_DIR = PROJECT_ROOT / "data" / "raw"
 OUTPUT_FILE = OUTPUT_DIR / "ftse100_100_companies.csv"
 
-
-# --------------------------------------------------
-# Download settings
-# --------------------------------------------------
 
 START_DATE = "2021-01-01"
 
@@ -129,7 +119,6 @@ def identify_failed_tickers(
                     failed.append(ticker)
 
             else:
-                # This normally only applies when one ticker is downloaded.
                 price_column = (
                     "Adj Close"
                     if "Adj Close" in data.columns

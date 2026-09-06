@@ -9,9 +9,7 @@ data = pd.read_csv(
     parse_dates=True
 )
 
-# ============================================================
-# Dataset overview
-# ============================================================
+
 
 print("=" * 50)
 print("DATASET OVERVIEW")
@@ -27,9 +25,7 @@ print(f"Number of companies: {num_companies}")
 print("\nCompanies:")
 print(data.columns.get_level_values(0).unique().tolist())
 
-# ============================================================
-# Dataset information
-# ============================================================
+
 
 print("\n" + "=" * 50)
 print("DATASET INFO")
@@ -37,9 +33,7 @@ print("=" * 50)
 
 data.info()
 
-# ============================================================
-# Missing values
-# ============================================================
+
 
 print("\n" + "=" * 50)
 print("MISSING VALUES")
@@ -55,9 +49,7 @@ missing_summary = pd.DataFrame({
 
 print(missing_summary[missing_summary["Missing Count"] > 0])
 
-# ============================================================
-# Adjusted closing prices
-# ============================================================
+
 
 close_prices = data.xs("Adj Close", axis=1, level=1)
 
@@ -82,9 +74,7 @@ missing_company = missing_company.sort_values("Missing Days", ascending=False)
 
 print(missing_company)
 
-# ============================================================
-# Plot raw adjusted closing prices
-# ============================================================
+
 
 plt.figure(figsize=(15, 7))
 
@@ -102,9 +92,7 @@ plt.ylabel("Adjusted Closing Price (GBp)")
 plt.tight_layout()
 plt.show()
 
-# ============================================================
-# Daily returns
-# ============================================================
+
 
 print("\n" + "=" * 50)
 print("DAILY RETURNS")
@@ -117,9 +105,7 @@ print(daily_returns.head())
 print("\nDaily return summary statistics:")
 print(daily_returns.describe())
 
-# ============================================================
-# Correlation of daily returns
-# ============================================================
+
 
 print("\n" + "=" * 50)
 print("DAILY RETURN CORRELATION")
@@ -155,9 +141,6 @@ plt.tight_layout()
 plt.show()
 
 
-# ============================================================
-# Return distribution
-# ============================================================
 
 all_returns = daily_returns.stack().dropna()
 
@@ -170,9 +153,6 @@ plt.ylabel("Frequency")
 plt.tight_layout()
 plt.show()
 
-# ============================================================
-# Skewness and kurtosis
-# ============================================================
 
 print("\n" + "=" * 50)
 print("SKEWNESS")
@@ -186,9 +166,6 @@ print("=" * 50)
 
 print(daily_returns.kurtosis().sort_values())
 
-# ============================================================
-# Volatility
-# ============================================================
 
 print("\n" + "=" * 50)
 print("DAILY VOLATILITY")
@@ -204,9 +181,7 @@ print("=" * 50)
 annualised_volatility = daily_returns.std() * (252 ** 0.5)
 print(annualised_volatility.sort_values())
 
-# ============================================================
-# boxplot of daily returns
-# ============================================================
+
 
 import seaborn as sns
 

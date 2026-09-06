@@ -9,9 +9,6 @@ from sklearn.decomposition import PCA
 from sklearn.metrics import silhouette_score
 
 
-# ============================================================
-# Configuration
-# ============================================================
 
 DATA_PATH = "data/processed/normalised_prices.csv"
 
@@ -32,9 +29,6 @@ os.makedirs(
 )
 
 
-# ============================================================
-# Load cleaned normalised prices
-# ============================================================
 
 normalised_prices = pd.read_csv(
     DATA_PATH,
@@ -74,10 +68,6 @@ print(
 )
 
 
-# ============================================================
-# Validate dataset
-# ============================================================
-
 if normalised_prices.empty:
     raise ValueError(
         "The normalised-price dataset is empty."
@@ -111,18 +101,6 @@ print(
 )
 
 
-# ============================================================
-# Prepare clustering matrix
-# ============================================================
-
-# Before transposing:
-# rows = trading days
-# columns = companies
-#
-# After transposing:
-# rows = companies
-# columns = normalised prices through time
-
 X_original = normalised_prices.T
 
 ticker_names = (
@@ -133,9 +111,6 @@ print("\nOriginal clustering matrix:")
 print(X_original.shape)
 
 
-# ============================================================
-# PCA dimensionality reduction
-# ============================================================
 
 # Use exactly the same approach as the DBSCAN evaluation:
 # retain enough principal components to explain at least 95%
@@ -214,10 +189,6 @@ pca_summary.to_csv(
 )
 
 
-# ============================================================
-# Run final DBSCAN model
-# ============================================================
-
 print("\n" + "=" * 80)
 print("FINAL DBSCAN PARAMETERS")
 print("=" * 80)
@@ -243,17 +214,6 @@ labels = dbscan.fit_predict(
 )
 
 
-# ============================================================
-# Convert labels for easier interpretation
-# ============================================================
-
-# DBSCAN uses:
-# -1 = noise
-#  0,1,... = clusters
-#
-# For output, clusters will be displayed as 1,2,...
-# while noise remains labelled as "Noise".
-
 display_labels = []
 
 for label in labels:
@@ -267,10 +227,6 @@ for label in labels:
             f"Cluster {label + 1}"
         )
 
-
-# ============================================================
-# Cluster assignments
-# ============================================================
 
 assignments = pd.DataFrame({
     "Ticker": ticker_names,
@@ -297,10 +253,6 @@ assignments.to_csv(
     index=False
 )
 
-
-# ============================================================
-# Cluster summary
-# ============================================================
 
 cluster_labels = sorted(
     [
@@ -363,10 +315,6 @@ cluster_summary.to_csv(
 )
 
 
-# ============================================================
-# Silhouette Score
-# ============================================================
-
 # Calculate silhouette using only non-noise observations,
 # consistent with the evaluation stage.
 
@@ -398,10 +346,6 @@ if (
         metric="euclidean"
     )
 
-
-# ============================================================
-# Print final results
-# ============================================================
 
 print("\n" + "=" * 80)
 print("FINAL DBSCAN RESULTS")
@@ -436,10 +380,6 @@ print(
     )
 )
 
-
-# ============================================================
-# Print cluster memberships
-# ============================================================
 
 for label in cluster_labels:
 
@@ -501,10 +441,6 @@ print(
 )
 
 
-# ============================================================
-# PCA coordinates for visualisation
-# ============================================================
-
 # Use the first two principal components for plotting.
 #
 # Even though clustering uses all retained PCA components,
@@ -526,9 +462,6 @@ plot_df.to_csv(
 )
 
 
-# ============================================================
-# PCA cluster visualisation
-# ============================================================
 
 plt.figure(
     figsize=(11, 8)
@@ -579,7 +512,6 @@ plt.scatter(
 )
 
 
-# Label each company
 
 for _, row in plot_df.iterrows():
 
@@ -636,10 +568,6 @@ plt.show()
 plt.close()
 
 
-# ============================================================
-# Mean cluster trajectories
-# ============================================================
-
 cluster_profiles = pd.DataFrame(
     index=normalised_prices.index
 )
@@ -693,10 +621,6 @@ cluster_profiles.to_csv(
     )
 )
 
-
-# ============================================================
-# Plot mean trajectories
-# ============================================================
 
 plt.figure(
     figsize=(13, 7)
@@ -755,10 +679,6 @@ plt.savefig(
 plt.show()
 plt.close()
 
-
-# ============================================================
-# Individual trajectories for each cluster
-# ============================================================
 
 for label in cluster_labels:
 
@@ -850,9 +770,6 @@ for label in cluster_labels:
     plt.close()
 
 
-# ============================================================
-# Noise trajectory plot
-# ============================================================
 
 if len(noise_members) > 0:
 
@@ -928,10 +845,6 @@ if len(noise_members) > 0:
     plt.close()
 
 
-# ============================================================
-# Final normalised values
-# ============================================================
-
 print("\n" + "=" * 80)
 print("FINAL MEAN NORMALISED VALUES")
 print("=" * 80)
@@ -950,10 +863,6 @@ for column in cluster_profiles.columns:
         f"{final_value:.4f}"
     )
 
-
-# ============================================================
-# Save final metrics
-# ============================================================
 
 metrics = pd.DataFrame({
     "eps": [
@@ -995,10 +904,6 @@ metrics.to_csv(
     index=False
 )
 
-
-# ============================================================
-# Finished
-# ============================================================
 
 print("\n" + "=" * 80)
 print("FINAL DBSCAN ANALYSIS COMPLETED")
